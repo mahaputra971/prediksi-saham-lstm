@@ -1,0 +1,18 @@
+{
+    "kode_emiten": "BYAN.JK",
+    "close_price": 19000.0,
+    "tenkan_sen" : {
+        "value": 19062.5,
+        "status": "downtrend"
+    },
+    "kijun_sen" : {
+        "value": 19062.5,
+        "status": "downtrend"
+    },
+    "senkou_span" : {
+        "value_span_a": 19062.5,
+        "value_span_b": 19062.5,
+        "status": "downtrend"
+    }
+}
+
