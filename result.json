@@ -1,3 +1,4 @@
+@app.get("/stock/value/{issuer_stock_codes}")
 {
     "kode_emiten": "BYAN.JK",
     "close_price": 19000.0,
@@ -13,6 +14,40 @@
         "value_span_a": 19062.5,
         "value_span_b": 19062.5,
         "status": "downtrend"
-    }
+    },
+    "date" : "date"
 }
 
+@app.get("/stock/value/{issuer_stock_codes}")
+{
+    "kode_emiten": "BBRI.JK",
+    "open" : "open", 
+    "high" : "high",
+    "low" : "low",
+    "close" : "close",
+    "close_adj" : "close",
+    "volume" : "volume",
+    "date" : "date",
+}
+
+@app.get("/stock/value/{issuer_stock_codes}")
+{
+    "kode_emiten": "BBRI.JK",
+    "RMSE" : "RMSE", 
+    "MAPE" : "MAPE", 
+    "MAE" : "MAE",
+    "MSE" : "MSE",
+    "date" :"date"
+}
+
+@app.get("/stock/value/{issuer_stock_codes}")
+{
+    "kode_emiten": "BBRI.JK",
+    "pic_closing_price" : "pic_closing_price",
+    "pic_sales_volume" : "pic_sales_volume",
+    "pic_price_history" : "pic_price_history",
+    "pic_comparation" : "pic_comparation", 
+    "pic_prediction" : "pic_prediction",
+    "pic_ichimoku_cloud" : "pic_ichimoku_cloud",
+    "render_date" : "render_date"
+}
