@@ -1,24 +1,36 @@
+
 import pandas as pd
+import mongo
 from fastapi import FastAPI
-from ..sql import show_specific_tables, get_issuer
-from ..ic_project import ichimoku_project
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
+from sql import show_specific_tables, get_issuer
+from ic_project import  get_current_ichimoku_project_controller, get_all_ichimoku_project_controller
 from pydantic import BaseModel
 
 
 app = FastAPI()
 
-
+class IchimokuData(BaseModel): 
+    kode_emiten: str
+    close_price: float
+    tenkan_sen: float
+    kijun_sen: float
+    senkou_span_a: float
+    senkou_span_b: float
+    date: str
+    
 class StockValueResponse(BaseModel):
     kode_emiten: str
     close_price: float
-    tenkan_sen: dict
-    kijun_sen: dict
-    senkou_span: dict
-    tenkan_sen_status: str
-    kijun_sen_status: str
-    senkou_span_status: str
+    tenkan_sen: float
+    kijun_sen: float
+    senkou_span_a: float
+    senkou_span_b: float
+    tenkan_sen_status : str
+    kijun_sen_status : str
+    senkou_span_status : str
     date: str
-
 
 class StockPriceResponse(BaseModel):
     kode_emiten: str
@@ -30,7 +42,6 @@ class StockPriceResponse(BaseModel):
     volume: int
     date: str
 
-
 class ErrorMetricsResponse(BaseModel):
     kode_emiten: str
     RMSE: float
@@ -38,7 +49,6 @@ class ErrorMetricsResponse(BaseModel):
     MAE: float
     MSE: float
     date: str
-
 
 class ChartResponse(BaseModel):
     kode_emiten: str
@@ -49,44 +59,66 @@ class ChartResponse(BaseModel):
     pic_prediction: str
     pic_ichimoku_cloud: str
     render_date: str
+    
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
 
+# connect to database on server starting
+@app.on_event("startup")
+def startup_db_client():
+    mongodb = mongo.get_database()
+    app.mongodb_client = mongodb
+    app.database = app.mongodb_client["all_ichimoku_data"]
+    if app.mongodb_client is None:
+        print("Failed to connect to MongoDB")
+    if app.database is None:
+        print("Failed to connect to Database all_ichimoku_data")
+    print("Connected to the MongoDB database of all_ichimoku_data!")
 
-@app.get("/stock/value/{issuer_stock_code}", response_model=StockValueResponse)
-def get_stock_value(issuer_stock_code: str):
-    try:
-        # issuer = get_issuer()
-        # data = ichimoku_project(issuer[0])
-        data = ichimoku_project(issuer_stock_code)
+# disconnect to database on server shutdown
+@app.on_event("shutdown")
+def shutdown_db_client():
+    client = mongo.shutdown_database()
+    if client is None:
+        print("Failed to close connection to MongoDB")
+    print("Connection to MongoDB closed!")
 
-        if data is None or data.empty:
-            return {"error": "Data not available"}
-
-        latest_row = data.iloc[-1]
-
-        response = {
-            "kode_emiten": issuer_stock_code,
-            "close_price": latest_row["close"],
-            "tenkan_sen": {
-                "value": latest_row["tenkan_sen"],
-                "status": latest_row["tenkan_sen_status"],
-            },
-            "kijun_sen": {
-                "value": latest_row["kijun_sen"],
-                "status": latest_row["kijun_sen_status"],
-            },
-            "senkou_span": {
-                "value_span_a": latest_row["senkou_span_a"],
-                "value_span_b": latest_row["senkou_span_b"],
-                "status": latest_row["senkou_span_status"],
-            },
-            "date": latest_row["Date"].strftime("%Y-%m-%d"),
-        }
-
-        return response
-
+@app.get("/stock/value/current/{issuer_stock_code}", response_model=StockValueResponse)
+def get_current_ichimoku_project(issuer_stock_code: str):
+    try: 
+        response = get_current_ichimoku_project_controller(issuer_stock_code)
+        if response is None:
+            return JSONResponse(status_code=404, content={"error": "Data not available"})
+        # parse the content of response on ichimoku_project function
+        return JSONResponse(content=jsonable_encoder(response))
     except Exception as e:
-        return {"error": str(e)}
+        # parse the returned error message
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
+@app.get("/stock/value/all/{issuer_stock_code}", response_model=StockValueResponse)
+def get_all_ichimoku_project(issuer_stock_code: str):
+    try: 
+        response = get_all_ichimoku_project_controller(issuer_stock_code)
+        if response is None:
+            return JSONResponse(status_code=404, content={"error": "Data not available"})
+        # parse the content of response on ichimoku_project function
+        return JSONResponse(content=jsonable_encoder(response))
+    except Exception as e:
+        # parse the returned error message
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+#@app.get("/stock/value/{issuer_stock_code}", response_model=StockValueResponse)
+#def get_all_ichimoku_project(issuer_stock_code: str):
+#    try: 
+#        response = ichimoku_project(issuer_stock_code)
+#        if response is None:
+#            return JSONResponse(status_code=404, content={"error": "Data not available"})
+#        # parse the content of response on ichimoku_project function
+#        return JSONResponse(content=jsonable_encoder(response))
+#    except Exception as e:
+#        # parse the returned error message
+#        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/stock/price/{issuer_stock_code}", response_model=StockPriceResponse)
 def get_stock_price(issuer_stock_code: str):
@@ -106,15 +138,12 @@ def get_stock_price(issuer_stock_code: str):
         "close": latest_row["close"],
         "close_adj": latest_row["close_adj"],
         "volume": latest_row["volume"],
-        "date": latest_row["date"].strftime("%Y-%m-%d"),
+        "date": latest_row["date"].strftime('%Y-%m-%d')
     }
 
     return response
 
-
-@app.get(
-    "/stock/error-metrics/{issuer_stock_code}", response_model=ErrorMetricsResponse
-)
+@app.get("/stock/error-metrics/{issuer_stock_code}", response_model=ErrorMetricsResponse)
 def get_error_metrics(issuer_stock_code: str):
     data = show_specific_tables("your_table_name")  # Replace with your table name
     df = pd.DataFrame(data)
@@ -130,11 +159,10 @@ def get_error_metrics(issuer_stock_code: str):
         "MAPE": latest_row["MAPE"],
         "MAE": latest_row["MAE"],
         "MSE": latest_row["MSE"],
-        "date": latest_row["date"].strftime("%Y-%m-%d"),
+        "date": latest_row["date"].strftime('%Y-%m-%d')
     }
 
     return response
-
 
 @app.get("/stock/chart/{issuer_stock_code}", response_model=ChartResponse)
 def get_chart(issuer_stock_code: str):
@@ -154,12 +182,10 @@ def get_chart(issuer_stock_code: str):
         "pic_comparation": latest_row["pic_comparation"],
         "pic_prediction": latest_row["pic_prediction"],
         "pic_ichimoku_cloud": latest_row["pic_ichimoku_cloud"],
-        "render_date": latest_row["render_date"].strftime("%Y-%m-%d"),
+        "render_date": latest_row["render_date"].strftime('%Y-%m-%d')
     }
 
     return response
-
-
 #######################
 
 # from typing import Union
@@ -168,7 +194,7 @@ def get_chart(issuer_stock_code: str):
 # import datetime
 
 # import matplotlib.pyplot as plt
-# import pandas_datareader.data as wb
+# import pandas_datareader.data as wb 
 
 # import pandas as pd
 # import numpy as np
@@ -192,13 +218,13 @@ def get_chart(issuer_stock_code: str):
 
 # @app.get("/stock/value/{issuer_stock_codes}") # route {url}/stock/value/BYAN.JK
 # def factor_ichimoku_cloud(issuer_stock_codes: str ):
-#     # issuer_stock_codes = 'BYAN.JK'
+#     # issuer_stock_codes = 'BYAN.JK' 
 #     yf.pdr_override()
 #     end_date = datetime.datetime.now()
 #     start_date = end_date - datetime.timedelta(days=5*365)
 #     data = pdr.get_data_yahoo(issuer_stock_codes, start=start_date, end=end_date.strftime("%Y-%m-%d"))
 #     high9 = data.High.rolling(9).max()
-#     Low9 = data.High.rolling(9).min()
+#     Low9 = data.High.rolling(9).min()   
 #     high26 = data.High.rolling(26).max()
 #     Low26 = data.High.rolling(26).min()
 #     high52 = data.High.rolling(52).max()
@@ -206,7 +232,7 @@ def get_chart(issuer_stock_code: str):
 
 #     data['tenkan_sen'] = (high9 + Low9) / 2
 #     data['kijun_sen'] = (high26 + Low26) / 2
-#     data['senkou_span_a'] = ((data['tenkan_sen'] + data['kijun_sen']) / 2).shift(26)
+#     data['senkou_span_a'] = ((data['tenkan_sen'] + data['kijun_sen']) / 2).shift(26) 
 #     data['senkou_span_b'] = ((high52 + Low52) / 2).shift(26)
 #     data['chikou'] = data.Close.shift(-26)
 #     data = data.iloc[26:]
@@ -220,7 +246,7 @@ def get_chart(issuer_stock_code: str):
 #     tenkan_sen_response = tenkan_sen_factor(data)
 #     kijun_sen_response = kijun_sen_factor(data)
 #     senkou_span_response = senkou_span_factor(data)
-
+    
 #     data = {
 #     "kode_emiten": issuer_stock_codes,
 #     "close_price": data['Close'].iloc[-1],
@@ -260,7 +286,7 @@ def get_chart(issuer_stock_code: str):
 #     else:
 #         print("The Tenkan-Sen is moving sideways.")
 #         return {"message_tenkan": "The Tenkan-Sen is moving sideways."}
-
+        
 # def kijun_sen_factor(data):
 #     last_close = data['Close'].iloc[-1]
 #     last_kijun_sen = data['kijun_sen'].iloc[-1]
@@ -274,7 +300,7 @@ def get_chart(issuer_stock_code: str):
 #     else:
 #         print("The kijun sen is moving sideways.")
 #         return {"message_kijun": "The kijun sen is moving sideways."}
-
+        
 # def senkou_span_factor(data):
 #     last_close = data['Close'].iloc[-1]
 #     last_senkou_span_a = data['senkou_span_a'].iloc[-1]
