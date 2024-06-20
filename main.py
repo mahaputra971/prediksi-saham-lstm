@@ -4,7 +4,7 @@ import mongo
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from sql import show_specific_tables, get_issuer
+from sql import show_specific_tables, get_issuer, get_table_data
 from ic_project import  get_current_ichimoku_project_controller, get_all_ichimoku_project_controller
 from pydantic import BaseModel
 
@@ -107,6 +107,16 @@ def get_all_ichimoku_project(issuer_stock_code: str):
     except Exception as e:
         # parse the returned error message
         return JSONResponse(status_code=500, content={"error": str(e)})
+    
+@app.get("/stock/show/{table_name}/{emiten_name}")
+def get_all_ichimoku_project(table_name: str, emiten_name: str):
+    try: 
+        response = get_table_data(emiten_name, table_name)
+        if response is None:
+            return JSONResponse(content=jsonable_encoder({"detail": "Data not available"}), status_code=404)
+        return JSONResponse(content=jsonable_encoder(response))
+    except Exception as e:
+        return JSONResponse(content=jsonable_encoder({"detail": str(e)}), status_code=500)
 
 #@app.get("/stock/value/{issuer_stock_code}", response_model=StockValueResponse)
 #def get_all_ichimoku_project(issuer_stock_code: str):
@@ -121,8 +131,8 @@ def get_all_ichimoku_project(issuer_stock_code: str):
 #        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/stock/price/{issuer_stock_code}", response_model=StockPriceResponse)
-def get_stock_price(issuer_stock_code: str):
-    data = show_specific_tables("your_table_name")  # Replace with your table name
+def get_stock_price(issuer_stock_code: str, table_name: str):
+    data = show_specific_tables("tb_detail_emiten")  # Replace with your table name
     df = pd.DataFrame(data)
 
     if df.empty:
