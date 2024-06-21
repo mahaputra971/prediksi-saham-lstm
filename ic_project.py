@@ -51,11 +51,11 @@ def get_tenkan_sen_status(trends):
 def get_kijun_sen_status(last_close, last_kijun_sen):
     kijun_sen_status = ""
     if last_close > last_kijun_sen:
-        kijun_sen_status = "The market is in an upward trend."
+        kijun_sen_status = "The kijun sen is in an upward trend."
     elif last_close < last_kijun_sen:
-        kijun_sen_status = "The market is in a downward trend."
+        kijun_sen_status = "The kijun sen is in a downward trend."
     else:
-        kijun_sen_status = "The market is moving sideways."
+        kijun_sen_status = "The kijun sen is moving sideways."
     return  kijun_sen_status
 
 def get_senkou_span_status(last_close, last_senkou_span_a, last_senkou_span_b):

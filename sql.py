@@ -6,7 +6,7 @@ import io
 import sqlite3
 from PIL import Image
 import pandas as pd
-import datetime
+# import datetime
 from datetime import datetime, date
 from sqlalchemy import select
 
@@ -89,7 +89,11 @@ def insert_data_analyst(table_name, data):
                     row[key] = convert_image_to_blob(value)
                     
                 # Convert datetime.datetime objects to strings
-                if isinstance(value, datetime.datetime):
+                if isinstance(value, datetime):
+                    row[key] = value.strftime('%Y-%m-%d')
+                    
+                # Convert datetime.date objects to strings
+                if isinstance(value, date):
                     row[key] = value.strftime('%Y-%m-%d')
 
             # Create query
