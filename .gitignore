@@ -3,3 +3,5 @@ venv/
 *.pub
 *:Zone.Identifier
 creds/
+./picture
+./ichimokuproject/image
