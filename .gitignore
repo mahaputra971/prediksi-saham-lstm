@@ -5,3 +5,4 @@ venv/
 creds/
 ./picture
 ./ichimokuproject/image
+__pycache__
