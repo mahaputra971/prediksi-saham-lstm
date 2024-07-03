@@ -298,6 +298,34 @@ def get_current_ichimoku_project_controller(stock):
     except Exception as e:
         return f"An error occurred while processing data: {e}"
     
+def interpret_sen_status(last_close, last_tenkan_sen, last_kijun_sen):
+    if last_close > last_tenkan_sen > last_kijun_sen:
+        status_sen = "Pasar Bullish"
+    elif last_close < last_tenkan_sen < last_kijun_sen:
+        status_sen = "Pasar Bearish"
+    elif last_close < last_tenkan_sen > last_kijun_sen:
+        status_sen = "Pasar Tidak Stabil, Potensi Reversal"
+    elif last_close > last_tenkan_sen < last_kijun_sen:
+        status_sen = "Pasar dalam Transisi, Potensi Kenaikan"
+    elif last_close < last_tenkan_sen == last_kijun_sen:
+        status_sen = "Pasar Bearish Konsolidasi, Potensi Kelanjutan Penurunan"
+    elif last_close > last_tenkan_sen == last_kijun_sen:
+        status_sen = "Pasar Bullish Konsolidasi, Potensi Kelanjutan Kenaikan"
+    elif last_close == last_tenkan_sen < last_kijun_sen:
+        status_sen = "Pasar Tidak Stabil, Potensi Reversal"
+    elif last_close == last_tenkan_sen > last_kijun_sen:
+        status_sen = "Pasar Tidak Stabil, Potensi Reversal"
+    elif last_close == last_tenkan_sen == last_kijun_sen:
+        status_sen = "Pasar Sideways, Konsolidasi"
+    elif last_tenkan_sen < last_close < last_kijun_sen:
+        status_sen = "Pasar dalam Transisi, Ketidakpastian"
+    elif last_tenkan_sen > last_close > last_kijun_sen:
+        status_sen = "Pasar dalam Transisi, Ketidakpastian"
+    else:
+        status_sen = "Kondisi Tidak Terdefinisi"
+    
+    return status_sen
+
 def ichimoku_sql(stock):
     print("ichimoku_project function called")
     
@@ -378,9 +406,9 @@ def ichimoku_sql(stock):
     last_kijun_sen = data['kijun_sen'].iloc[-1]
 
     ####################################### TEKAN_SEN FACTOR
-    tenkan_sen = data['tenkan_sen']
-    trends = get_trend(tenkan_sen)
-    tenkan_sen_status = get_tenkan_sen_status(trends)
+    # tenkan_sen = data['tenkan_sen']
+    # trends = get_trend(tenkan_sen)
+    # tenkan_sen_status = get_tenkan_sen_status(trends)
         
     ######################################## KIJUN_SEN FACTOR
     # Get the last closing price and the last Kijun-Sen value
@@ -388,14 +416,16 @@ def ichimoku_sql(stock):
     last_kijun_sen = data['kijun_sen'].iloc[-1]
 
     # Determine the trend based on the position of the closing price relative to the Kijun-Sen line
-    if last_close > last_kijun_sen:
-        kijun_sen_status = "The market is in an upward trend."
-    elif last_close < last_kijun_sen:
-        kijun_sen_status = "The market is in a downward trend."
-    else:
-        kijun_sen_status = "The market is moving sideways."
-    print(kijun_sen_status)
-        
+    # if last_close > last_kijun_sen:
+    #     kijun_sen_status = "The market is in an upward trend."
+    # elif last_close < last_kijun_sen:
+    #     kijun_sen_status = "The market is in a downward trend."
+    # else:
+    #     kijun_sen_status = "The market is moving sideways."
+    # print(kijun_sen_status)
+    
+    sen_status = interpret_sen_status(last_close, last_kijun_sen, last_kijun_sen)
+    
     ######################################## SENKOU_SEN (KUMO) FACTOR
     # Get the last closing price and the last Senkou Span A and B values
     last_close = data['Close'].iloc[-1]
@@ -403,8 +433,8 @@ def ichimoku_sql(stock):
     last_senkou_span_b = data['senkou_span_b'].iloc[-1]
 
     # Determine the market trend and potential price movements based on the position of the closing price relative to the Senkou Span A and B lines
-    senkou_span_status = get_senkou_span_status(last_close, last_senkou_span_a, last_senkou_span_b)
-    print(senkou_span_status)
+    span_status = get_senkou_span_status(last_close, last_senkou_span_a, last_senkou_span_b)
+    print(span_status)
     
     # Reset the index to move 'Date' from index to columns
     data_reset = data.reset_index()
@@ -413,7 +443,7 @@ def ichimoku_sql(stock):
     data_new = data_reset[['Date', 'tenkan_sen', 'kijun_sen', 'senkou_span_a', 'senkou_span_b']]
 
     # Now you can return data_new or pass it to your insert_data_analyst function
-    return data_new, tenkan_sen_status, kijun_sen_status, senkou_span_status
+    return data_new, sen_status, span_status
 
 def ichimoku_comparation(stock):
     print("ichimoku_project function called")
@@ -507,3 +537,40 @@ def ichimoku_comparation(stock):
 
     # Now you can return data_new or pass it to your insert_data_analyst function
     return data_new, tenkan_sen_status, kijun_sen_status, senkou_span_status
+
+import pandas as pd
+
+def pembuktian_ichimoku(ichimoku_data):
+    array_tren_1_hari = []
+    array_tren_1_minggu = []
+    array_tren_1_bulan = []
+
+    # Ensure ichimoku_data is a pandas Series
+    if isinstance(ichimoku_data, pd.DataFrame):
+        ichimoku_data = ichimoku_data['close']
+    
+    # Calculate Next 1-Day Trend
+    for i in range(1, len(ichimoku_data)):  # Start from the second row
+        if ichimoku_data.iloc[i] > ichimoku_data.iloc[i - 1]:
+            tren_1_hari = 1
+        elif ichimoku_data.iloc[i] < ichimoku_data.iloc[i - 1]:
+            tren_1_hari = -1
+        else:
+            tren_1_hari = 0
+        array_tren_1_hari.append(tren_1_hari)
+
+    # Calculate Next 1-Week Trend
+    for i in range(len(array_tren_1_hari)):
+        if i + 7 > len(array_tren_1_hari):
+            break  # Stop appending if there's not enough data for a full week
+        tren_1_minggu = sum(array_tren_1_hari[i:i + 7])
+        array_tren_1_minggu.append(tren_1_minggu)
+
+    # Calculate Next 1-Month Trend
+    for i in range(len(array_tren_1_hari)):
+        if i + 30 > len(array_tren_1_hari):
+            break  # Stop appending if there's not enough data for a full month
+        tren_1_bulan = sum(array_tren_1_hari[i:i + 30])
+        array_tren_1_bulan.append(tren_1_bulan)
+
+    return array_tren_1_hari, array_tren_1_minggu, array_tren_1_bulan
