@@ -1,25 +1,24 @@
-
-import pandas as pd
-import mongo
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-from fastapi.encoders import jsonable_encoder
-from sql import show_specific_tables, get_issuer, get_table_data
-from ic_project import  get_current_ichimoku_project_controller, get_all_ichimoku_project_controller
-from pydantic import BaseModel
-
+from pydantic import BaseModel, Field
+from typing import List, Any
+from datetime import date
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+from fastui import FastUI, AnyComponent, prebuilt_html, components as c
+from fastui.components.display import DisplayMode, DisplayLookup
+from fastui.events import GoToEvent, BackEvent
+from . import get_table_data, exception_handler
 
 app = FastAPI()
 
-class IchimokuData(BaseModel): 
+# Define models
+class IchimokuData(BaseModel):
     kode_emiten: str
-    close_price: float
-    tenkan_sen: float
-    kijun_sen: float
-    senkou_span_a: float
-    senkou_span_b: float
+    tenkan_sen: int
+    kijun_sen: int
+    senkou_span_a: int
+    senkou_span_b: int
     date: str
-    
+
 class StockValueResponse(BaseModel):
     kode_emiten: str
     close_price: float
@@ -27,9 +26,9 @@ class StockValueResponse(BaseModel):
     kijun_sen: float
     senkou_span_a: float
     senkou_span_b: float
-    tenkan_sen_status : str
-    kijun_sen_status : str
-    senkou_span_status : str
+    tenkan_sen_status: str
+    kijun_sen_status: str
+    senkou_span_status: str
     date: str
 
 class StockPriceResponse(BaseModel):
@@ -59,280 +58,299 @@ class ChartResponse(BaseModel):
     pic_prediction: str
     pic_ichimoku_cloud: str
     render_date: str
+
+# Sample data
+# detail_emiten = [
+#     StockPriceResponse(
+#         kode_emiten='ABC',
+#         open=100.0,
+#         high=110.0,
+#         low=90.0,
+#         close=105.0,
+#         close_adj=103.0,
+#         volume=1000,
+#         date='2022-01-01'
+#     ),
+#     StockPriceResponse(
+#         kode_emiten='DEF',
+#         open=200.0,
+#         high=210.0,
+#         low=190.0,
+#         close=205.0,
+#         close_adj=203.0,
+#         volume=2000,
+#         date='2022-01-02'
+#     ),
+#     StockPriceResponse(
+#         kode_emiten='GHI',
+#         open=300.0,
+#         high=310.0,
+#         low=290.0,
+#         close=305.0,
+#         close_adj=303.0,
+#         volume=3000,
+#         date='2022-01-03'
+#     ),
+#     StockPriceResponse(
+#         kode_emiten='JKL',
+#         open=400.0,
+#         high=410.0,
+#         low=390.0,
+#         close=405.0,
+#         close_adj=403.0,
+#         volume=4000,
+#         date='2022-01-04'
+#     ),
+# ]
+
+# ichimoku_data = [
+#     IchimokuData(
+#         kode_emiten='ABC',
+#         close_price=105.0,
+#         tenkan_sen=100.0,
+#         kijun_sen=95.0,
+#         senkou_span_a=110.0,
+#         senkou_span_b=90.0,
+#         date='2022-01-01'
+#     ),
+#     IchimokuData(
+#         kode_emiten='DEF',
+#         close_price=205.0,
+#         tenkan_sen=200.0,
+#         kijun_sen=195.0,
+#         senkou_span_a=210.0,
+#         senkou_span_b=190.0,
+#         date='2022-01-02'
+#     ),    
+#     IchimokuData(
+#         kode_emiten='GHI',
+#         close_price=305.0,
+#         tenkan_sen=300.0,
+#         kijun_sen=295.0,
+#         senkou_span_a=310.0,
+#         senkou_span_b=290.0,
+#         date='2022-01-03'
+#     ),
+#     IchimokuData(
+#         kode_emiten='JKL',
+#         close_price=405.0,
+#         tenkan_sen=400.0,
+#         kijun_sen=395.0,
+#         senkou_span_a=410.0,
+#         senkou_span_b=390.0,
+#         date='2022-01-04'
+#     ),
+# ]
+
+# error_metrics_response = [
+#     ErrorMetricsResponse(
+#         kode_emiten='ABC',
+#         RMSE=0.1,
+#         MAPE=0.05,
+#         MAE=0.02,
+#         MSE=0.01,
+#         date='2022-01-01'
+#     ),
+#     ErrorMetricsResponse(
+#         kode_emiten='DEF',
+#         RMSE=0.2,
+#         MAPE=0.1,
+#         MAE=0.04,
+#         MSE=0.02,
+#         date='2022-01-02'
+#     ),
+#     ErrorMetricsResponse(
+#         kode_emiten='GHI',
+#         RMSE=0.3,
+#         MAPE=0.15,
+#         MAE=0.06,
+#         MSE=0.03,
+#         date='2022-01-03'
+#     ),
+#     ErrorMetricsResponse(
+#         kode_emiten='JKL',
+#         RMSE=0.4,
+#         MAPE=0.2,
+#         MAE=0.08,
+#         MSE=0.04,
+#         date='2022-01-04'
+#     ),
+# ]
+
+chart_response = [
+    ChartResponse(
+        kode_emiten='ABC',
+        pic_closing_price='pic_closing_price_abc.png',
+        pic_sales_volume='pic_sales_volume_abc.png',
+        pic_price_history='pic_price_history_abc.png',
+        pic_comparation='pic_comparation_abc.png',
+        pic_prediction='pic_prediction_abc.png',
+        pic_ichimoku_cloud='pic_ichimoku_cloud_abc.png',
+        render_date='2022-01-01'
+    ),
+    ChartResponse(
+        kode_emiten='DEF',
+        pic_closing_price='pic_closing_price_def.png',
+        pic_sales_volume='pic_sales_volume_def.png',
+        pic_price_history='pic_price_history_def.png',
+        pic_comparation='pic_comparation_def.png',
+        pic_prediction='pic_prediction_def.png',
+        pic_ichimoku_cloud='pic_ichimoku_cloud_def.png',
+        render_date='2022-01-02'
+    ),
+    ChartResponse(
+        kode_emiten='GHI',
+        pic_closing_price='pic_closing_price_ghi.png',
+        pic_sales_volume='pic_sales_volume_ghi.png',
+        pic_price_history='pic_price_history_ghi.png',
+        pic_comparation='pic_comparation_ghi.png',
+        pic_prediction='pic_prediction_ghi.png',
+        pic_ichimoku_cloud='pic_ichimoku_cloud_ghi.png',
+        render_date='2022-01-03'
+    ),
+    ChartResponse(
+        kode_emiten='JKL',
+        pic_closing_price='pic_closing_price_jkl.png',
+        pic_sales_volume='pic_sales_volume_jkl.png',
+        pic_price_history='pic_price_history_jkl.png',
+        pic_comparation='pic_comparation_jkl.png',
+        pic_prediction='pic_prediction_jkl.png',
+        pic_ichimoku_cloud='pic_ichimoku_cloud_jkl.png',
+        render_date='2022-01-04'
+    ),
+]
+
+# Fetch data from database
+# detail_emiten = get_table_data('BELI.JK', 'tb_detail_emiten')
+# ichimoku_data = get_table_data('BELI.JK', 'tb_data_ichimoku_cloud')
+# error_metrics_response = get_table_data('BELI.JK', 'tb_prediction_lstm')
+# chart_response = get_table_data('BELI.JK', 'tb_summary')
+
+# Convert fetched data to response models
+# detail_emiten = [StockPriceResponse(**item) for item in detail_emiten]
+# ichimoku_data = [IchimokuData(**item) for item in ichimoku_data]
+# error_metrics_response = [ErrorMetricsResponse(**item) for item in error_metrics_response]
+# chart_response = [ChartResponse(**item) for item in chart_response]
+
+
+@exception_handler
+@app.get("/api/home", response_model=FastUI, response_model_exclude_none=True)
+def home() -> List[Any]:
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Navbar', level=2),
+                c.Button(text='Detail Emiten', on_click=GoToEvent(url='/detail_emiten/')),
+                c.Button(text='Ichimoku Data', on_click=GoToEvent(url='/ichimoku_data/')),
+                c.Button(text='Error Metrics', on_click=GoToEvent(url='/error_metrics/')),
+                c.Button(text='Charts', on_click=GoToEvent(url='/charts/')),
+            ]
+        ),
+    ]
     
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+@exception_handler
+@app.get("/api/detail_emiten/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def detail_emiten_table(emiten_name: str) -> List[Any]:
+    detail_emiten = get_table_data(emiten_name, 'tb_detail_emiten')
+    detail_emiten = [StockPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in detail_emiten]
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Detail Emiten', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
+                c.Table(
+                    data=detail_emiten,
+                    columns=[
+                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/')),
+                        DisplayLookup(field='open'),
+                        DisplayLookup(field='high'),
+                        DisplayLookup(field='low'),
+                        DisplayLookup(field='close'),
+                        DisplayLookup(field='close_adj'),
+                        DisplayLookup(field='volume'),
+                        DisplayLookup(field='date', mode=DisplayMode.date),
+                    ],
+                ),
+            ]
+        ),
+    ]
 
-# connect to database on server starting
-@app.on_event("startup")
-def startup_db_client():
-    mongodb = mongo.get_database()
-    app.mongodb_client = mongodb
-    app.database = app.mongodb_client["all_ichimoku_data"]
-    if app.mongodb_client is None:
-        print("Failed to connect to MongoDB")
-    if app.database is None:
-        print("Failed to connect to Database all_ichimoku_data")
-    print("Connected to the MongoDB database of all_ichimoku_data!")
+@exception_handler
+@app.get("/api/ichimoku_data/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def ichimoku_data_table(emiten_name: str) -> List[Any]:
+    ichimoku_data = get_table_data(emiten_name, 'tb_data_ichimoku_cloud')
+    ichimoku_data = [IchimokuData(**{**item, 'kode_emiten': emiten_name}) for item in ichimoku_data]
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Ichimoku Data', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
+                c.Table(
+                    data=ichimoku_data,
+                    columns=[
+                        DisplayLookup(field='kode_emiten'),
+                        DisplayLookup(field='tenkan_sen'),
+                        DisplayLookup(field='kijun_sen'),
+                        DisplayLookup(field='senkou_span_a'),
+                        DisplayLookup(field='senkou_span_b'),
+                        DisplayLookup(field='date', mode=DisplayMode.date),
+                    ],
+                ),
+            ]
+        ),
+    ]
 
-# disconnect to database on server shutdown
-@app.on_event("shutdown")
-def shutdown_db_client():
-    client = mongo.shutdown_database()
-    if client is None:
-        print("Failed to close connection to MongoDB")
-    print("Connection to MongoDB closed!")
+@exception_handler
+@app.get("/api/error_metrics/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def error_metrics_table(emiten_name: str) -> List[Any]:
+    lstm_data = get_table_data(emiten_name, 'tb_lstm')
+    lstm_data = [ErrorMetricsResponse(**{**item, 'kode_emiten': emiten_name}) for item in lstm_data]
+    return [
+        c.Page( 
+            components=[
+                c.Heading(text='Error Metrics', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
+                c.Table(
+                    data=lstm_data,
+                    columns=[
+                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/error_metrics')),
+                        DisplayLookup(field='RMSE'),
+                        DisplayLookup(field='MAPE'),
+                        DisplayLookup(field='MAE'),
+                        DisplayLookup(field='MSE'),
+                        DisplayLookup(field='date', mode=DisplayMode.date),
+                    ],
+                ),
+            ]
+        ),
+    ]
 
-@app.get("/stock/value/current/{issuer_stock_code}", response_model=StockValueResponse)
-def get_current_ichimoku_project(issuer_stock_code: str):
-    try: 
-        response = get_current_ichimoku_project_controller(issuer_stock_code)
-        if response is None:
-            return JSONResponse(status_code=404, content={"error": "Data not available"})
-        # parse the content of response on ichimoku_project function
-        return JSONResponse(content=jsonable_encoder(response))
-    except Exception as e:
-        # parse the returned error message
-        return JSONResponse(status_code=500, content={"error": str(e)})
+@app.get("/api/charts/", response_model=FastUI, response_model_exclude_none=True)
+def charts_table() -> List[Any]:
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Charts', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
+                c.Table(
+                    data=chart_response,
+                    columns=[
+                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/charts')),
+                        DisplayLookup(field='pic_closing_price', mode=DisplayMode.image),
+                        DisplayLookup(field='pic_sales_volume', mode=DisplayMode.image),
+                        DisplayLookup(field='pic_price_history', mode=DisplayMode.image),
+                        DisplayLookup(field='pic_comparation', mode=DisplayMode.image),
+                        DisplayLookup(field='pic_prediction', mode=DisplayMode.image),
+                        DisplayLookup(field='pic_ichimoku_cloud', mode=DisplayMode.image),
+                        DisplayLookup(field='render_date', mode=DisplayMode.date),
+                    ],
+                ),
+            ]
+        ),
+    ]
 
-@app.get("/stock/value/all/{issuer_stock_code}", response_model=StockValueResponse)
-def get_all_ichimoku_project(issuer_stock_code: str):
-    try: 
-        response = get_all_ichimoku_project_controller(issuer_stock_code)
-        if response is None:
-            return JSONResponse(status_code=404, content={"error": "Data not available"})
-        # parse the content of response on ichimoku_project function
-        return JSONResponse(content=jsonable_encoder(response))
-    except Exception as e:
-        # parse the returned error message
-        return JSONResponse(status_code=500, content={"error": str(e)})
-    
-@app.get("/stock/show/{table_name}/{emiten_name}")
-def get_all_ichimoku_project(table_name: str, emiten_name: str):
-    try: 
-        response = get_table_data(emiten_name, table_name)
-        if response is None:
-            return JSONResponse(content=jsonable_encoder({"detail": "Data not available"}), status_code=404)
-        return JSONResponse(content=jsonable_encoder(response))
-    except Exception as e:
-        return JSONResponse(content=jsonable_encoder({"detail": str(e)}), status_code=500)
-
-#@app.get("/stock/value/{issuer_stock_code}", response_model=StockValueResponse)
-#def get_all_ichimoku_project(issuer_stock_code: str):
-#    try: 
-#        response = ichimoku_project(issuer_stock_code)
-#        if response is None:
-#            return JSONResponse(status_code=404, content={"error": "Data not available"})
-#        # parse the content of response on ichimoku_project function
-#        return JSONResponse(content=jsonable_encoder(response))
-#    except Exception as e:
-#        # parse the returned error message
-#        return JSONResponse(status_code=500, content={"error": str(e)})
-
-@app.get("/stock/price/{issuer_stock_code}", response_model=StockPriceResponse)
-def get_stock_price(issuer_stock_code: str, table_name: str):
-    data = show_specific_tables("tb_detail_emiten")  # Replace with your table name
-    df = pd.DataFrame(data)
-
-    if df.empty:
-        return {"error": "Data not available"}
-
-    latest_row = df.iloc[-1]
-
-    response = {
-        "kode_emiten": issuer_stock_code,
-        "open": latest_row["open"],
-        "high": latest_row["high"],
-        "low": latest_row["low"],
-        "close": latest_row["close"],
-        "close_adj": latest_row["close_adj"],
-        "volume": latest_row["volume"],
-        "date": latest_row["date"].strftime('%Y-%m-%d')
-    }
-
-    return response
-
-@app.get("/stock/error-metrics/{issuer_stock_code}", response_model=ErrorMetricsResponse)
-def get_error_metrics(issuer_stock_code: str):
-    data = show_specific_tables("your_table_name")  # Replace with your table name
-    df = pd.DataFrame(data)
-
-    if df.empty:
-        return {"error": "Data not available"}
-
-    latest_row = df.iloc[-1]
-
-    response = {
-        "kode_emiten": issuer_stock_code,
-        "RMSE": latest_row["RMSE"],
-        "MAPE": latest_row["MAPE"],
-        "MAE": latest_row["MAE"],
-        "MSE": latest_row["MSE"],
-        "date": latest_row["date"].strftime('%Y-%m-%d')
-    }
-
-    return response
-
-@app.get("/stock/chart/{issuer_stock_code}", response_model=ChartResponse)
-def get_chart(issuer_stock_code: str):
-    data = show_specific_tables("your_table_name")  # Replace with your table name
-    df = pd.DataFrame(data)
-
-    if df.empty:
-        return {"error": "Data not available"}
-
-    latest_row = df.iloc[-1]
-
-    response = {
-        "kode_emiten": issuer_stock_code,
-        "pic_closing_price": latest_row["pic_closing_price"],
-        "pic_sales_volume": latest_row["pic_sales_volume"],
-        "pic_price_history": latest_row["pic_price_history"],
-        "pic_comparation": latest_row["pic_comparation"],
-        "pic_prediction": latest_row["pic_prediction"],
-        "pic_ichimoku_cloud": latest_row["pic_ichimoku_cloud"],
-        "render_date": latest_row["render_date"].strftime('%Y-%m-%d')
-    }
-
-    return response
-#######################
-
-# from typing import Union
-# from pandas_datareader import data as pdr
-# import yfinance as yf
-# import datetime
-
-# import matplotlib.pyplot as plt
-# import pandas_datareader.data as wb 
-
-# import pandas as pd
-# import numpy as np
-# from sklearn.linear_model import LinearRegression
-# from sklearn.model_selection import train_test_split
-# from sklearn.ensemble import RandomForestClassifier
-
-# from fastapi import FastAPI
-
-# app = FastAPI()
+@app.get('/{path:path}')
+async def html_landing() -> HTMLResponse:
+    return HTMLResponse(prebuilt_html(title='FastUI Demo'))
 
 
-# @app.get("/")
-# def read_root():
-#     return {"Hello": "World"}
-
-
-# @app.get("/items/{item_id}")
-# def read_item(item_id: int, q: Union[str, None] = None):
-#     return {"item_id": item_id, "q": q}
-
-# @app.get("/stock/value/{issuer_stock_codes}") # route {url}/stock/value/BYAN.JK
-# def factor_ichimoku_cloud(issuer_stock_codes: str ):
-#     # issuer_stock_codes = 'BYAN.JK' 
-#     yf.pdr_override()
-#     end_date = datetime.datetime.now()
-#     start_date = end_date - datetime.timedelta(days=5*365)
-#     data = pdr.get_data_yahoo(issuer_stock_codes, start=start_date, end=end_date.strftime("%Y-%m-%d"))
-#     high9 = data.High.rolling(9).max()
-#     Low9 = data.High.rolling(9).min()   
-#     high26 = data.High.rolling(26).max()
-#     Low26 = data.High.rolling(26).min()
-#     high52 = data.High.rolling(52).max()
-#     Low52 = data.High.rolling(52).min()
-
-#     data['tenkan_sen'] = (high9 + Low9) / 2
-#     data['kijun_sen'] = (high26 + Low26) / 2
-#     data['senkou_span_a'] = ((data['tenkan_sen'] + data['kijun_sen']) / 2).shift(26) 
-#     data['senkou_span_b'] = ((high52 + Low52) / 2).shift(26)
-#     data['chikou'] = data.Close.shift(-26)
-#     data = data.iloc[26:]
-
-#     print ("\nKode Emiten : ", issuer_stock_codes)
-#     print("Close Price:", data['Close'].iloc[-1])
-#     print("tenkan_sen:", data['tenkan_sen'].iloc[-1])
-#     print("kijun_sen:", data['kijun_sen'].iloc[-1])
-#     print("senkou_span_a:", data['senkou_span_a'].iloc[-1])
-#     print("senkou_span_b:", data['senkou_span_b'].iloc[-1])
-#     tenkan_sen_response = tenkan_sen_factor(data)
-#     kijun_sen_response = kijun_sen_factor(data)
-#     senkou_span_response = senkou_span_factor(data)
-    
-#     data = {
-#     "kode_emiten": issuer_stock_codes,
-#     "close_price": data['Close'].iloc[-1],
-#     "tenkan_sen" : {
-#         "value": data['tenkan_sen'].iloc[-1],
-#         "status": tenkan_sen_response['message_tenkan']
-#     },
-#     "kijun_sen" : {
-#         "value": data['kijun_sen'].iloc[-1],
-#         "status": kijun_sen_response["message_kijun"]
-#     },
-#     "senkou_span" : {
-#         "value_span_a": data['senkou_span_a'].iloc[-1],
-#         "value_span_b": data['senkou_span_b'].iloc[-1],
-#         "status": senkou_span_response["message_senkou_span"]
-#     }
-# }
-
-#     return data
-#     # kijun_sen_factor(data)
-#     # senkou_span_factor(data)
-
-# def tenkan_sen_factor(data):
-#     tenkan_sen = data['tenkan_sen']
-#     # message_tenkan = data['message_tenkan']
-#     x = np.array(range(len(tenkan_sen))).reshape(-1, 1)
-#     y = tenkan_sen.values.reshape(-1, 1)
-#     model = LinearRegression()
-#     model.fit(x, y)
-#     slope = model.coef_[0]
-#     if slope > 0:
-#         print("The Tenkan-Sen is in an uptrend.")
-#         return {"message_tenkan": "The Tenkan-Sen is in an uptrend."}
-#     elif slope < 0:
-#         print("The Tenkan-Sen is in an uptrend.")
-#         return {"message_tenkan": "The Tenkan-Sen is in an uptrend."}
-#     else:
-#         print("The Tenkan-Sen is moving sideways.")
-#         return {"message_tenkan": "The Tenkan-Sen is moving sideways."}
-        
-# def kijun_sen_factor(data):
-#     last_close = data['Close'].iloc[-1]
-#     last_kijun_sen = data['kijun_sen'].iloc[-1]
-
-#     if last_close > last_kijun_sen:
-#         print("The kijun sen is in an upward trend.")
-#         return {"message_kijun": "The kijun sen is in an upward trend."}
-#     elif last_close < last_kijun_sen:
-#         print("The kijun sen is in a downward trend.")
-#         return {"message_kijun": "The kijun sen is in a downward trend."}
-#     else:
-#         print("The kijun sen is moving sideways.")
-#         return {"message_kijun": "The kijun sen is moving sideways."}
-        
-# def senkou_span_factor(data):
-#     last_close = data['Close'].iloc[-1]
-#     last_senkou_span_a = data['senkou_span_a'].iloc[-1]
-#     last_senkou_span_b = data['senkou_span_b'].iloc[-1]
-
-#     if last_close > last_senkou_span_a and last_senkou_span_a > last_senkou_span_b:
-#         print("Status senkou span: Uptrend")
-#         return {"message_senkou_span": "Status senkou span: Uptrend"}
-#     elif last_close < last_senkou_span_a and last_senkou_span_a < last_senkou_span_b:
-#         print("Status senkou span: Downtrend")
-#         return {"message_senkou_span": "Status senkou span: Downtrend"}
-#     elif last_close < last_senkou_span_b and last_senkou_span_a > last_senkou_span_b:
-#         print("Status senkou span: Will Dump")
-#         return {"message_senkou_span": "Status senkou span: Will Dump"}
-#     elif last_close > last_senkou_span_b and last_senkou_span_a < last_senkou_span_b:
-#         print("Status senkou span: Will Pump")
-#         return {"message_senkou_span": "Status senkou span: Will Pump"}
-#     elif last_senkou_span_b < last_close < last_senkou_span_a and last_senkou_span_a > last_senkou_span_b:
-#         print("Status senkou span: Uptrend and Will Bounce Up")
-#         return {"message_senkou_span": "Status senkou span: Uptrend and Will Bounce Up"}
-#     elif last_senkou_span_b < last_close < last_senkou_span_a and last_senkou_span_a < last_senkou_span_b:
-#         print("Status senkou span): Downtrend and Will Bounce Down")
-#         return {"message_senkou_span": "Status senkou span): Downtrend and Will Bounce Down"}
-
-# @app.get("/stock/prediction/{item_id}")

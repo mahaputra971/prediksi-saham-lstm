@@ -1,20 +1,21 @@
 from sqlalchemy import create_engine, text, create_engine, MetaData, Table
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
 from io import BytesIO
 from PIL.PngImagePlugin import PngImageFile
 import io
 import sqlite3
 from PIL import Image
 import pandas as pd
-# import datetime
 from datetime import datetime, date
-from sqlalchemy import select
+from . import exception_handler
 
 # Create the engine
 engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
 Session = sessionmaker(bind=engine)
 session = Session()
 
+@exception_handler
 def show_tables():
     try:
         with engine.connect() as connection:
@@ -28,6 +29,7 @@ def show_tables():
     except Exception as e:
         print("Connection failed:", str(e))
 
+@exception_handler
 def get_emiten_id(stock_value, table_name):
     try:
         # Get the emiten_id from the tb_emiten table
@@ -41,6 +43,7 @@ def get_emiten_id(stock_value, table_name):
         print("An error occurred:", e)
         return None
 
+@exception_handler
 def show_specific_tables(table_name):
     data = []
     try:
@@ -56,6 +59,7 @@ def show_specific_tables(table_name):
     except Exception as e:
         print("Displaying table failed:", str(e))
         
+@exception_handler
 def get_issuer():
     data_code = []
     data_name = []
@@ -71,6 +75,7 @@ def get_issuer():
     except Exception as e:
         print("failed get the data issuer, because:", str(e))
 
+@exception_handler
 def insert_data_analyst(table_name, data):
     try:
         # If data is a DataFrame, convert it to a list of dictionaries
@@ -111,6 +116,7 @@ def insert_data_analyst(table_name, data):
     finally:
         session.close()
 
+@exception_handler
 def convert_image_to_blob(image):
     # Convert image to bytes
     image_bytes = io.BytesIO()
@@ -122,6 +128,7 @@ def convert_image_to_blob(image):
 
     return image_blob
 
+@exception_handler
 def insert_tables():
     try:
         with engine.connect() as connection:
@@ -133,6 +140,7 @@ def insert_tables():
     except Exception as e:
         print("Insert failed:", str(e))
 
+@exception_handler
 def truncate_tables(table_name):
     try:
         with engine.connect() as connection:
@@ -152,37 +160,34 @@ def truncate_tables(table_name):
     except Exception as e:
         print("An error occurred:", e)
 
+@exception_handler
 def get_table_data(emiten_name, table_name):
-    try:
-        with engine.connect() as connection:
-            id_emiten = get_emiten_id(emiten_name, table_name)
-            # Reflect the table from the database
-            metadata = MetaData()
-            table = Table(table_name, metadata, autoload_with=engine)
+    with engine.connect() as connection:
+        id_emiten = get_emiten_id(emiten_name, table_name)
+        # Reflect the table from the database
+        metadata = MetaData()
+        table = Table(table_name, metadata, autoload_with=engine)
 
-            # Query all rows from the table where the id_emiten matches
-            query = select(table).where(table.c.id_emiten == id_emiten)
-            result = connection.execute(query).fetchall()
+        # Query all rows from the table where the id_emiten matches
+        query = select(table).where(table.c.id_emiten == id_emiten)
+        result = connection.execute(query).fetchall()
 
-            # Map the columns to a list of dictionaries
-            response = []
-            for row in result:
-                item = {}
-                for i, column in enumerate(table.columns):
-                    value = row[i]
-                    if isinstance(value, datetime):
-                        # Convert datetime objects to string
-                        item[column.name] = value.isoformat()
-                    elif isinstance(value, date):
-                        # Convert date objects to string
-                        item[column.name] = value.isoformat()
-                    else:
-                        item[column.name] = value
-                response.append(item)
+        # Map the columns to a list of dictionaries
+        response = []
+        for row in result:
+            item = {}
+            for i, column in enumerate(table.columns):
+                value = row[i]
+                if isinstance(value, datetime):
+                    # Convert datetime objects to string
+                    item[column.name] = value.isoformat()
+                elif isinstance(value, date):
+                    # Convert date objects to string
+                    item[column.name] = value.isoformat()
+                else:
+                    item[column.name] = value
+            response.append(item)
 
-            # Return the list of dictionaries
-            return response
-    except Exception as e:
-        print("An error occurred:", e)
-        return None
+        # Return the list of dictionaries
+        return response
 
