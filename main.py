@@ -1,12 +1,17 @@
 from pydantic import BaseModel, Field
 from typing import List, Any
 from datetime import date
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse
 from fastui import FastUI, AnyComponent, prebuilt_html, components as c
 from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent, BackEvent
+from fastui.forms import fastui_form
 from . import get_table_data, exception_handler
+from fastapi.responses import RedirectResponse
+
+class EmitenForm(BaseModel):
+    emiten_name: str = Field(title="Emiten Name")
 
 app = FastAPI()
 
@@ -59,124 +64,6 @@ class ChartResponse(BaseModel):
     pic_ichimoku_cloud: str
     render_date: str
 
-# Sample data
-# detail_emiten = [
-#     StockPriceResponse(
-#         kode_emiten='ABC',
-#         open=100.0,
-#         high=110.0,
-#         low=90.0,
-#         close=105.0,
-#         close_adj=103.0,
-#         volume=1000,
-#         date='2022-01-01'
-#     ),
-#     StockPriceResponse(
-#         kode_emiten='DEF',
-#         open=200.0,
-#         high=210.0,
-#         low=190.0,
-#         close=205.0,
-#         close_adj=203.0,
-#         volume=2000,
-#         date='2022-01-02'
-#     ),
-#     StockPriceResponse(
-#         kode_emiten='GHI',
-#         open=300.0,
-#         high=310.0,
-#         low=290.0,
-#         close=305.0,
-#         close_adj=303.0,
-#         volume=3000,
-#         date='2022-01-03'
-#     ),
-#     StockPriceResponse(
-#         kode_emiten='JKL',
-#         open=400.0,
-#         high=410.0,
-#         low=390.0,
-#         close=405.0,
-#         close_adj=403.0,
-#         volume=4000,
-#         date='2022-01-04'
-#     ),
-# ]
-
-# ichimoku_data = [
-#     IchimokuData(
-#         kode_emiten='ABC',
-#         close_price=105.0,
-#         tenkan_sen=100.0,
-#         kijun_sen=95.0,
-#         senkou_span_a=110.0,
-#         senkou_span_b=90.0,
-#         date='2022-01-01'
-#     ),
-#     IchimokuData(
-#         kode_emiten='DEF',
-#         close_price=205.0,
-#         tenkan_sen=200.0,
-#         kijun_sen=195.0,
-#         senkou_span_a=210.0,
-#         senkou_span_b=190.0,
-#         date='2022-01-02'
-#     ),    
-#     IchimokuData(
-#         kode_emiten='GHI',
-#         close_price=305.0,
-#         tenkan_sen=300.0,
-#         kijun_sen=295.0,
-#         senkou_span_a=310.0,
-#         senkou_span_b=290.0,
-#         date='2022-01-03'
-#     ),
-#     IchimokuData(
-#         kode_emiten='JKL',
-#         close_price=405.0,
-#         tenkan_sen=400.0,
-#         kijun_sen=395.0,
-#         senkou_span_a=410.0,
-#         senkou_span_b=390.0,
-#         date='2022-01-04'
-#     ),
-# ]
-
-# error_metrics_response = [
-#     ErrorMetricsResponse(
-#         kode_emiten='ABC',
-#         RMSE=0.1,
-#         MAPE=0.05,
-#         MAE=0.02,
-#         MSE=0.01,
-#         date='2022-01-01'
-#     ),
-#     ErrorMetricsResponse(
-#         kode_emiten='DEF',
-#         RMSE=0.2,
-#         MAPE=0.1,
-#         MAE=0.04,
-#         MSE=0.02,
-#         date='2022-01-02'
-#     ),
-#     ErrorMetricsResponse(
-#         kode_emiten='GHI',
-#         RMSE=0.3,
-#         MAPE=0.15,
-#         MAE=0.06,
-#         MSE=0.03,
-#         date='2022-01-03'
-#     ),
-#     ErrorMetricsResponse(
-#         kode_emiten='JKL',
-#         RMSE=0.4,
-#         MAPE=0.2,
-#         MAE=0.08,
-#         MSE=0.04,
-#         date='2022-01-04'
-#     ),
-# ]
-
 chart_response = [
     ChartResponse(
         kode_emiten='ABC',
@@ -220,34 +107,31 @@ chart_response = [
     ),
 ]
 
-# Fetch data from database
-# detail_emiten = get_table_data('BELI.JK', 'tb_detail_emiten')
-# ichimoku_data = get_table_data('BELI.JK', 'tb_data_ichimoku_cloud')
-# error_metrics_response = get_table_data('BELI.JK', 'tb_prediction_lstm')
-# chart_response = get_table_data('BELI.JK', 'tb_summary')
-
-# Convert fetched data to response models
-# detail_emiten = [StockPriceResponse(**item) for item in detail_emiten]
-# ichimoku_data = [IchimokuData(**item) for item in ichimoku_data]
-# error_metrics_response = [ErrorMetricsResponse(**item) for item in error_metrics_response]
-# chart_response = [ChartResponse(**item) for item in chart_response]
-
-
-@exception_handler
 @app.get("/api/home", response_model=FastUI, response_model_exclude_none=True)
-def home() -> List[Any]:
+async def home() -> list[AnyComponent]:
     return [
         c.Page(
             components=[
                 c.Heading(text='Navbar', level=2),
-                c.Button(text='Detail Emiten', on_click=GoToEvent(url='/detail_emiten/')),
-                c.Button(text='Ichimoku Data', on_click=GoToEvent(url='/ichimoku_data/')),
-                c.Button(text='Error Metrics', on_click=GoToEvent(url='/error_metrics/')),
-                c.Button(text='Charts', on_click=GoToEvent(url='/charts/')),
+                c.ModelForm(model=EmitenForm, display_mode='page', submit_url='/api/submit_emiten_form'),
             ]
         ),
     ]
-    
+
+@app.post("/api/submit_emiten_form", response_model=FastUI, response_model_exclude_none=True)
+async def submit_emiten_form(emiten_name: str = Form(...)):
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Select Action for Emiten', level=2),
+                c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}')),
+                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}')),
+                c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}')),
+                c.Button(text='Charts', on_click=GoToEvent(url=f'/charts/{emiten_name}')),
+            ]
+        ),
+    ]
+
 @exception_handler
 @app.get("/api/detail_emiten/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def detail_emiten_table(emiten_name: str) -> List[Any]:
@@ -325,15 +209,16 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
         ),
     ]
 
-@app.get("/api/charts/", response_model=FastUI, response_model_exclude_none=True)
-def charts_table() -> List[Any]:
+@app.get("/api/charts/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def charts_table(emiten_name: str) -> List[Any]:
+    emiten_charts = [chart for chart in chart_response if chart.kode_emiten == emiten_name]
     return [
         c.Page(
             components=[
                 c.Heading(text='Charts', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
                 c.Table(
-                    data=chart_response,
+                    data=emiten_charts,
                     columns=[
                         DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/charts')),
                         DisplayLookup(field='pic_closing_price', mode=DisplayMode.image),
@@ -352,5 +237,3 @@ def charts_table() -> List[Any]:
 @app.get('/{path:path}')
 async def html_landing() -> HTMLResponse:
     return HTMLResponse(prebuilt_html(title='FastUI Demo'))
-
-
