@@ -5,7 +5,7 @@ import json
 # import mongo
 import matplotlib.pyplot as plt
 # from sql import insert_data_analyst
-from . import insert_data_analyst
+from . import insert_data_analyst, get_emiten_id
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression 
@@ -386,6 +386,7 @@ def ichimoku_sql(stock):
     kumo.fill_between(data.index, data.senkou_span_a, data.senkou_span_b, where= data.senkou_span_a < data.senkou_span_b, color='lightcoral')
     plt.grid()  
     plt.savefig(f'picture/ichimoku/{stock}.png')
+    # plt.savefig(f'ichimokuproject/image/plot_IC_{stock}.png')
     plt.clf()  # Clear the current figure to start a new plot for the next asset
     
     # print(data)
@@ -576,5 +577,125 @@ def pembuktian_ichimoku(ichimoku_data):
 
     return array_tren_1_hari, array_tren_1_minggu, array_tren_1_bulan
 
-def accuracy_ic(ichimoku_data):
-    return 0
+import pandas as pd
+from sqlalchemy import create_engine, text
+
+def get_trend_arrays(stock):
+    id_stock = get_emiten_id(stock)
+    # Create database connection
+    engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
+
+    # Fetch the earliest date from tb_ichimoku_cloud for the given stock
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT MIN(date) FROM tb_data_ichimoku_cloud WHERE id_emiten = :id_stock"), {'id_stock': id_stock})
+        date_ichimoku = result.scalar()
+    
+    array_1_hari = []
+    array_1_minggu = []
+    array_1_bulan = []
+    
+    if not date_ichimoku:
+        return array_1_hari, array_1_minggu, array_1_bulan
+    
+    # Loop through each day from the starting date to the last date
+    current_date = pd.to_datetime(date_ichimoku)
+    with engine.connect() as conn:
+        while True:
+            # Fetch data for current date
+            query = text("""
+                SELECT tenkan_sen, kijun_sen FROM tb_ichimoku_cloud WHERE date = :date AND id_emiten = :id_stock
+            """)
+            ichimoku_data = conn.execute(query, {'date': current_date, 'id_stock': id_stock}).fetchone()
+            
+            query = text("""
+                SELECT close FROM tb_detail_emiten WHERE date = :date AND id_emiten = :id_stock
+            """)
+            close_price = conn.execute(query, {'date': current_date, 'id_stock': id_stock}).scalar()
+            
+            if not ichimoku_data or close_price is None:
+                break  # No more data
+            
+            tenkan_sen, kijun_sen = ichimoku_data
+            
+            # Calculate status_ichimoku
+            if close_price > tenkan_sen > kijun_sen:
+                status_ichimoku = 1
+            elif close_price < tenkan_sen < kijun_sen:
+                status_ichimoku = 0
+            elif close_price < tenkan_sen > kijun_sen:
+                status_ichimoku = 0.5
+            elif close_price > tenkan_sen < kijun_sen:
+                status_ichimoku = 1
+            elif close_price < tenkan_sen == kijun_sen:
+                status_ichimoku = 0
+            elif close_price > tenkan_sen == kijun_sen:
+                status_ichimoku = 1
+            elif close_price == tenkan_sen < kijun_sen:
+                status_ichimoku = 0.5
+            elif close_price == tenkan_sen > kijun_sen:
+                status_ichimoku = 0.5
+            elif close_price == tenkan_sen == kijun_sen:
+                status_ichimoku = 0.5
+            elif tenkan_sen < close_price < kijun_sen:
+                status_ichimoku = 0.5
+            elif tenkan_sen > close_price > kijun_sen:
+                status_ichimoku = 0.5
+            else:
+                status_ichimoku = 0.5
+
+            # Fetch next day close price
+            next_day = current_date + pd.Timedelta(days=1)
+            next_day_close = conn.execute(text("""
+                SELECT close FROM tb_detail_emiten WHERE date = :date AND id_emiten = :id_stock
+            """), {'date': next_day, 'id_stock': id_stock}).scalar()
+            
+            if next_day_close is not None:
+                compare_1_hari = 1 if close_price < next_day_close else 0 if close_price > next_day_close else 0.5
+                array_1_hari.append(1 if compare_1_hari == status_ichimoku else 0)
+            
+            # Fetch one week close prices
+            week_close_prices = []
+            for i in range(1, 8):
+                date = current_date + pd.Timedelta(days=i)
+                price = conn.execute(text("""
+                    SELECT close FROM tb_detail_emiten WHERE date = :date AND id_emiten = :id_stock
+                """), {'date': date, 'id_stock': id_stock}).scalar()
+                if price is None:
+                    break
+                week_close_prices.append(price)
+            
+            if len(week_close_prices) == 7:
+                highest_week = max(week_close_prices)
+                lowest_week = min(week_close_prices)
+                if status_ichimoku == 1:
+                    array_1_minggu.append(1 if highest_week > close_price else 0)
+                elif status_ichimoku == 0:
+                    array_1_minggu.append(1 if lowest_week < close_price else 0)
+                else:
+                    array_1_minggu.append(1 if highest_week <= close_price or lowest_week >= close_price else 0)
+            
+            # Fetch one month close prices
+            month_close_prices = []
+            for i in range(1, 31):
+                date = current_date + pd.Timedelta(days=i)
+                price = conn.execute(text("""
+                    SELECT close FROM tb_detail_emiten WHERE date = :date AND id_emiten = :id_stock
+                """), {'date': date, 'id_stock': id_stock}).scalar()
+                if price is None:
+                    break
+                month_close_prices.append(price)
+            
+            if len(month_close_prices) == 30:
+                highest_month = max(month_close_prices)
+                lowest_month = min(month_close_prices)
+                if status_ichimoku == 1:
+                    array_1_bulan.append(1 if highest_month > close_price else 0)
+                elif status_ichimoku == 0:
+                    array_1_bulan.append(1 if lowest_month < close_price else 0)
+                else:
+                    array_1_bulan.append(1 if highest_month <= close_price or lowest_month >= close_price else 0)
+            
+            # Move to the next date
+            current_date += pd.Timedelta(days=1)
+    
+    return array_1_hari, array_1_minggu, array_1_bulan

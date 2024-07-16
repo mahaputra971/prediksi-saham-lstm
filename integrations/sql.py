@@ -163,7 +163,7 @@ def truncate_tables(table_name):
 @exception_handler
 def get_table_data(emiten_name, table_name):
     with engine.connect() as connection:
-        id_emiten = get_emiten_id(emiten_name, table_name)
+        id_emiten = get_emiten_id(emiten_name)
         # Reflect the table from the database
         metadata = MetaData()
         table = Table(table_name, metadata, autoload_with=engine)
@@ -190,16 +190,4 @@ def get_table_data(emiten_name, table_name):
 
         # Return the list of dictionaries
         return response
-    
-@exception_handler
-def get_image_blob(emiten_name, table_name):
-    with engine.connect() as connection:
-        cursor = connection.cursor()
-        id_emiten = get_emiten_id(emiten_name, table_name)
-        query = "SELECT* FROM tb_summary WHERE id = %s"
-        cursor.execute(query, (image_id,))
-        image_blob = cursor.fetchone()[0]
-        cursor.close()
-        connection.close()
-        return image_blob
 

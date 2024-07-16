@@ -2,18 +2,22 @@ from pydantic import BaseModel, Field
 from typing import List, Any
 from datetime import date
 from fastapi import FastAPI, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastui import FastUI, AnyComponent, prebuilt_html, components as c
 from fastui.components.display import DisplayMode, DisplayLookup
-from fastui.events import GoToEvent, BackEvent
+from fastui.events import GoToEvent, BackEvent, PageEvent
 from fastui.forms import fastui_form
-from . import get_table_data, exception_handler
+from integrations import get_table_data, exception_handler, blob_to_data_url
 from fastapi.responses import RedirectResponse
+import os
+from fastapi.staticfiles import StaticFiles
+import json
 
 class EmitenForm(BaseModel):
-    emiten_name: str = Field(title="Emiten Name")
+    emiten_name: str = Field(title="Emiten Code")
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="picture"), name="static")
 
 # Define models
 class IchimokuData(BaseModel):
@@ -64,55 +68,40 @@ class ChartResponse(BaseModel):
     pic_ichimoku_cloud: str
     render_date: str
 
-chart_response = [
-    ChartResponse(
-        kode_emiten='ABC',
-        pic_closing_price='pic_closing_price_abc.png',
-        pic_sales_volume='pic_sales_volume_abc.png',
-        pic_price_history='pic_price_history_abc.png',
-        pic_comparation='pic_comparation_abc.png',
-        pic_prediction='pic_prediction_abc.png',
-        pic_ichimoku_cloud='pic_ichimoku_cloud_abc.png',
-        render_date='2022-01-01'
-    ),
-    ChartResponse(
-        kode_emiten='DEF',
-        pic_closing_price='pic_closing_price_def.png',
-        pic_sales_volume='pic_sales_volume_def.png',
-        pic_price_history='pic_price_history_def.png',
-        pic_comparation='pic_comparation_def.png',
-        pic_prediction='pic_prediction_def.png',
-        pic_ichimoku_cloud='pic_ichimoku_cloud_def.png',
-        render_date='2022-01-02'
-    ),
-    ChartResponse(
-        kode_emiten='GHI',
-        pic_closing_price='pic_closing_price_ghi.png',
-        pic_sales_volume='pic_sales_volume_ghi.png',
-        pic_price_history='pic_price_history_ghi.png',
-        pic_comparation='pic_comparation_ghi.png',
-        pic_prediction='pic_prediction_ghi.png',
-        pic_ichimoku_cloud='pic_ichimoku_cloud_ghi.png',
-        render_date='2022-01-03'
-    ),
-    ChartResponse(
-        kode_emiten='JKL',
-        pic_closing_price='pic_closing_price_jkl.png',
-        pic_sales_volume='pic_sales_volume_jkl.png',
-        pic_price_history='pic_price_history_jkl.png',
-        pic_comparation='pic_comparation_jkl.png',
-        pic_prediction='pic_prediction_jkl.png',
-        pic_ichimoku_cloud='pic_ichimoku_cloud_jkl.png',
-        render_date='2022-01-04'
-    ),
-]
+class IchimokuStatus(BaseModel):
+    kode_emiten: str
+    sen_status: str
+    span_status: str
+    date: date
+
+class PredictionLSTM(BaseModel):
+    kode_emiten: str
+    max_price: float
+    min_price: float
+    max_price_date: date
+    min_price_date: date
+    date: date
+
+class IchimokuAccuracy(BaseModel):
+    kode_emiten: str
+    percent_1_hari_sen : float
+    percent_1_minggu_sen : float
+    percent_1_bulan_sen : float
+    percent_1_hari_span : float
+    percent_1_minggu_span : float
+    percent_1_bulan_span : float
+    date: date
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/home")
 
 @app.get("/api/home", response_model=FastUI, response_model_exclude_none=True)
 async def home() -> list[AnyComponent]:
     return [
         c.Page(
             components=[
-                c.Heading(text='Navbar', level=2),
+                c.Heading(text='Analisa Technical LSTM dan Ichimoku Stock', level=2),
                 c.ModelForm(model=EmitenForm, display_mode='page', submit_url='/api/submit_emiten_form'),
             ]
         ),
@@ -124,10 +113,14 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
         c.Page(
             components=[
                 c.Heading(text='Select Action for Emiten', level=2),
-                c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}')),
-                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}')),
-                c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}')),
-                c.Button(text='Charts', on_click=GoToEvent(url=f'/charts/{emiten_name}')),
+                # c.Button(text='Secondary Button', named_style='secondary', class_name='+ ms-2')
+                c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
+                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
+                c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
+                c.Button(text='Charts', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
+                c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
+                c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
+                c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
             ]
         ),
     ]
@@ -209,25 +202,207 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
         ),
     ]
 
+@exception_handler
+@app.get("/api/prediction/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def error_metrics_table(emiten_name: str) -> List[Any]:
+    tb_prediction_lstm = get_table_data(emiten_name, 'tb_prediction_lstm')
+    tb_prediction_lstm = [PredictionLSTM(**{**item, 'kode_emiten': emiten_name}) for item in tb_prediction_lstm]
+    return [
+        c.Page( 
+            components=[
+                c.Heading(text='Error Metrics', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
+                c.Table(
+                    data=tb_prediction_lstm,
+                    columns=[
+                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/error_metrics')),
+                        DisplayLookup(field='max_price'),
+                        DisplayLookup(field='min_price'),
+                        DisplayLookup(field='max_price_date'),
+                        DisplayLookup(field='min_price_date'),
+                        DisplayLookup(field='date', mode=DisplayMode.date),
+                    ],
+                ),
+            ]
+        ),
+    ]
+
+@exception_handler
+@app.get("/api/ichimoku_status/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def ichimoku_status_table(emiten_name: str) -> List[Any]:
+    ichimoku_status_data = get_table_data(emiten_name, 'tb_ichimoku_status')
+    ichimoku_status_data = [IchimokuStatus(**{**item, 'kode_emiten': emiten_name}) for item in ichimoku_status_data]
+    return [
+        c.Page( 
+            components=[
+                c.Heading(text='Ichimoku Status', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
+                c.Table(
+                    data=ichimoku_status_data,
+                    columns=[
+                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/ichimoku_status')),
+                        DisplayLookup(field='sen_status'),
+                        DisplayLookup(field='span_status'),
+                        DisplayLookup(field='date', mode=DisplayMode.date),
+                    ],
+                ),
+            ]
+        ),
+    ]
+
+# @app.get("/image/")
+# def get_image():
+#     return FileResponse("BBCA.JK.png")
+
 @app.get("/api/charts/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def charts_table(emiten_name: str) -> List[Any]:
-    emiten_charts = [chart for chart in chart_response if chart.kode_emiten == emiten_name]
+    emiten_chart = get_table_data(emiten_name, 'tb_summary')
+    image_path_accuracy = f"/static/accuracy/{emiten_name}.png"
+    image_path_adj_closing = f"/static/adj_closing_price/{emiten_name}.png"
+    image_path_close_price = f"/static/close_price_history/{emiten_name}.png"
+    image_path_ichimoku = f"/static/ichimoku/{emiten_name}.png"
+    image_path_prediction = f"/static/prediction/{emiten_name}.png"
+    image_path_sales_volume = f"/static/sales_volume/{emiten_name}.png"
+    emiten_chart = [ChartResponse(**{**item, 'kode_emiten': emiten_name}) for item in emiten_chart]
     return [
         c.Page(
             components=[
                 c.Heading(text='Charts', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
                 c.Table(
-                    data=emiten_charts,
+                    data=emiten_chart,
                     columns=[
                         DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/charts')),
-                        DisplayLookup(field='pic_closing_price', mode=DisplayMode.image),
-                        DisplayLookup(field='pic_sales_volume', mode=DisplayMode.image),
-                        DisplayLookup(field='pic_price_history', mode=DisplayMode.image),
-                        DisplayLookup(field='pic_comparation', mode=DisplayMode.image),
-                        DisplayLookup(field='pic_prediction', mode=DisplayMode.image),
-                        DisplayLookup(field='pic_ichimoku_cloud', mode=DisplayMode.image),
-                        DisplayLookup(field='render_date', mode=DisplayMode.date),
+                        DisplayLookup(field='pic_closing_price'),
+                        DisplayLookup(field='pic_sales_volume'),
+                        DisplayLookup(field='pic_price_history'),
+                        DisplayLookup(field='pic_comparation'),
+                        DisplayLookup(field='pic_prediction'),
+                        DisplayLookup(field='pic_ichimoku_cloud'),
+                        DisplayLookup(field='render_date'),
+                    ],
+                ),
+            ]
+        ),
+        c.Div(
+            components=[
+                c.Heading(text='Accuracy LSTM', level=2),
+                c.Paragraph(text='this is show how accurate the LSTM model.'),
+                c.Image(
+                    src=image_path_accuracy,
+                    alt='Pydantic Logo',
+                    width=1000,
+                    height=500,
+                    loading='lazy',
+                    referrer_policy='no-referrer',
+                    class_name='border rounded',
+                ),
+            ],
+            class_name='border-top mt-3 pt-1 center-content',
+        ),
+        c.Div(
+            components=[
+                c.Heading(text='Adj Close Price', level=2),
+                c.Paragraph(text='this is show the adjusted close price of the stock.'),
+                c.Image(
+                    src=image_path_adj_closing,
+                    alt='Pydantic Logo',
+                    width=1000,
+                    height=500,
+                    loading='lazy',
+                    referrer_policy='no-referrer',
+                    class_name='border rounded',
+                ),
+            ],
+            class_name='border-top mt-3 pt-1 center-content',
+        ),
+        c.Div(
+            components=[
+                c.Heading(text='Close Price History', level=2),
+                c.Paragraph(text='this is show the close price history of the stock.'),
+                c.Image(
+                    src=image_path_close_price,
+                    alt='Pydantic Logo',
+                    width=1000,
+                    height=500,
+                    loading='lazy',
+                    referrer_policy='no-referrer',
+                    class_name='border rounded',
+                ),
+            ],
+            class_name='border-top mt-3 pt-1 center-content',
+        ),
+        c.Div(
+            components=[
+                c.Heading(text='Ichimoku Cloud', level=2),
+                c.Paragraph(text='this is show the ichimoku cloud of the stock.'),
+                c.Image(
+                    src=image_path_ichimoku,
+                    alt='Pydantic Logo',
+                    width=1000,
+                    height=500,
+                    loading='lazy',
+                    referrer_policy='no-referrer',
+                    class_name='border rounded',
+                ),
+            ],
+            class_name='border-top mt-3 pt-1 center-content',
+        ),
+        c.Div(
+            components=[
+                c.Heading(text='Prediction', level=2),
+                c.Paragraph(text='this is show the Prediction Close Proce the Stock'),
+                c.Image(
+                    src=image_path_prediction,
+                    alt='Pydantic Logo',
+                    width=1000,
+                    height=500,
+                    loading='lazy',
+                    referrer_policy='no-referrer',
+                    class_name='border rounded',
+                ),
+            ],
+            class_name='border-top mt-3 pt-1 center-content',
+        ), 
+        c.Div(
+            components=[
+                c.Heading(text='Sales Volume', level=2),
+                c.Paragraph(text='this is show the Sales Volume of the Stock'),
+                c.Image(
+                    src=image_path_sales_volume,
+                    alt='Pydantic Logo',
+                    width=1000,
+                    height=500,
+                    loading='lazy',
+                    referrer_policy='no-referrer',
+                    class_name='border rounded',
+                ),
+            ],
+            class_name='border-top mt-3 pt-1 center-content',
+        ),     
+    ]
+
+@exception_handler
+@app.get("/api/ichimoku_accuracy/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def ichimoku_status_table(emiten_name: str) -> List[Any]:
+    accuracy_ichimoku_cloud = get_table_data(emiten_name, 'tb_accuracy_ichimoku_cloud')
+    accuracy_ichimoku_cloud = [IchimokuAccuracy(**{**item, 'kode_emiten': emiten_name}) for item in accuracy_ichimoku_cloud]
+    return [
+        c.Page( 
+            components=[
+                c.Heading(text='Ichimoku Accuracy', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
+                c.Table(
+                    data=accuracy_ichimoku_cloud,
+                    columns=[
+                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/ichimoku_status')),
+                        DisplayLookup(field='percent_1_hari_sen'),
+                        DisplayLookup(field='percent_1_minggu_sen'),
+                        DisplayLookup(field='percent_1_bulan_sen'),
+                        DisplayLookup(field='percent_1_hari_span'),
+                        DisplayLookup(field='percent_1_minggu_span'),
+                        DisplayLookup(field='percent_1_bulan_span'),
+                        DisplayLookup(field='date', mode=DisplayMode.date),
                     ],
                 ),
             ]
