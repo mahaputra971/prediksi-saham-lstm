@@ -1,14 +1,15 @@
-from sqlalchemy import create_engine, text, create_engine, MetaData, Table
+from sqlalchemy import create_engine, text, MetaData, Table
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select
 from io import BytesIO
-from PIL.PngImagePlugin import PngImageFile
 import io
 import sqlite3
 from PIL import Image
 import pandas as pd
 from datetime import datetime, date
+from tensorflow.keras.models import load_model, save_model
 from . import exception_handler
+import tempfile
 
 # Create the engine
 engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
@@ -53,7 +54,6 @@ def show_specific_tables(table_name):
             connection.commit()
             for row in result:
                 data.append(row)
-                # print(row)
             print("Table displayed successfully!!!!!!!!!!!!!!!!!")
             return data
     except Exception as e:
@@ -89,7 +89,6 @@ def insert_data_analyst(table_name, data):
         for row in data:
             # Convert images in row to BLOBs
             for key, value in row.items():
-                # print(f"{key}: {type(value)}") #debug type data
                 if isinstance(value, Image.Image):
                     row[key] = convert_image_to_blob(value)
                     
@@ -113,8 +112,6 @@ def insert_data_analyst(table_name, data):
     except Exception as e:
         session.rollback()
         print("An error occurred:", e)
-    finally:
-        session.close()
 
 @exception_handler
 def convert_image_to_blob(image):
@@ -133,9 +130,7 @@ def insert_tables():
     try:
         with engine.connect() as connection:
             # Perform the insert operation here
-            # ...
             connection.commit()
-
             print("Tables inserted successfully!")
     except Exception as e:
         print("Insert failed:", str(e))
@@ -191,3 +186,62 @@ def get_table_data(emiten_name, table_name):
         # Return the list of dictionaries
         return response
 
+@exception_handler
+def save_model_to_db(model, id_emiten, name, algorithm, hyperparameters, metrics):
+    try:
+        # Serialize the model to a temporary file
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=True) as tmp:
+            model.save(tmp.name)
+            tmp.seek(0)
+            model_blob = tmp.read()
+
+        # Create the data dictionary
+        data = {
+            'id_emiten': id_emiten,
+            'name': name,
+            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'model_blob': model_blob,
+            'algorithm': algorithm,
+            'hyperparameters': str(hyperparameters),
+            'metrics': str(metrics)
+        }
+
+        # Insert the model into the database
+        insert_data_analyst("models", data)
+        print("Model saved to database successfully.")
+    except Exception as e:
+        print("An error occurred while saving the model:", e)
+
+@exception_handler
+def load_model_from_db(model_id):
+    try:
+        # Fetch the model blob from the database
+        query = text("SELECT model_blob FROM models WHERE id_model = :model_id")
+        model_blob = session.execute(query, {'model_id': model_id}).scalar()
+        
+        if model_blob is None:
+            print(f"No model found with ID: {model_id}")
+            return None
+
+        # Deserialize the model from the blob
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=True) as tmp:
+            tmp.write(model_blob)
+            tmp.flush()
+            model = load_model(tmp.name)
+        
+        print("Model loaded from database successfully.")
+        return model
+    except Exception as e:
+        print("An error occurred while loading the model:", e)
+        return None
+
+@exception_handler
+def get_model_id_by_emiten(id_emiten):
+    try:
+        # Fetch the latest model_id for the given id_emiten
+        query = text("SELECT id_model FROM models WHERE id_emiten = :id_emiten ORDER BY created_at DESC LIMIT 1")
+        model_id = session.execute(query, {'id_emiten': id_emiten}).scalar()
+        return model_id
+    except Exception as e:
+        print("An error occurred while fetching the model ID:", e)
+        return None

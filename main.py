@@ -134,7 +134,7 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
         c.Page(
             components=[
                 c.Heading(text='Detail Emiten', level=2),
-                c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}')),
                 c.Table(
                     data=detail_emiten,
                     columns=[

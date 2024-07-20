@@ -20,5 +20,7 @@ all = ['exception_handler',
        'ichimoku_sql',
        'pembuktian_ichimoku',
        'blob_to_data_url',
-       'get_trend_arrays']
-
+       'get_trend_arrays',
+       'save_model_to_db',
+       'load_model_from_db',
+       'get_model_id_by_emiten']
