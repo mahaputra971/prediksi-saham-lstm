@@ -1,3 +1,18 @@
+# app/main.py
+
+from pydantic import BaseModel, Field
+from typing import List, Any
+from datetime import date
+from fastapi import FastAPI, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastui import FastUI, AnyComponent, prebuilt_html, components as c
+from fastui.components.display import DisplayMode, DisplayLookup
+from fastui.events import GoToEvent
+from fastapi.staticfiles import StaticFiles
+from app.sql import get_table_data
+from app.predict import predict_with_loaded_model
+from app.exception import exception_handler
+
 from pydantic import BaseModel, Field
 from typing import List, Any
 from datetime import date
@@ -13,13 +28,17 @@ import os
 from fastapi.staticfiles import StaticFiles
 import json
 
+
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
 class EmitenForm(BaseModel):
     emiten_name: str = Field(title="Emiten Code")
 
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="picture"), name="static")
+class DateRangeForm(BaseModel):
+    start_date: date = Field(title="Start Date")
+    end_date: date = Field(title="End Date")
 
-# Define models
 class IchimokuData(BaseModel):
     kode_emiten: str
     tenkan_sen: int
@@ -84,20 +103,22 @@ class PredictionLSTM(BaseModel):
 
 class IchimokuAccuracy(BaseModel):
     kode_emiten: str
-    percent_1_hari_sen : float
-    percent_1_minggu_sen : float
-    percent_1_bulan_sen : float
-    percent_1_hari_span : float
-    percent_1_minggu_span : float
-    percent_1_bulan_span : float
+    percent_1_hari_sen: float
+    percent_1_minggu_sen: float
+    percent_1_bulan_sen: float
+    percent_1_hari_span: float
+    percent_1_minggu_span: float
+    percent_1_bulan_span: float
     date: date
 
+@exception_handler
 @app.get("/")
 async def root():
     return RedirectResponse(url="/home")
 
+@exception_handler
 @app.get("/api/home", response_model=FastUI, response_model_exclude_none=True)
-async def home() -> list[AnyComponent]:
+async def home() -> List[AnyComponent]:
     return [
         c.Page(
             components=[
@@ -107,25 +128,63 @@ async def home() -> list[AnyComponent]:
         ),
     ]
 
-
+@exception_handler
 @app.post("/api/submit_emiten_form", response_model=FastUI, response_model_exclude_none=True)
 async def submit_emiten_form(emiten_name: str = Form(...)):
     return [
         c.Page(
             components=[
                 c.Heading(text='Select Action for Emiten', level=2),
-                # c.Button(text='Secondary Button', named_style='secondary', class_name='+ ms-2')
-                c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Charts', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
+                c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Charts', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
-    
+
+@exception_handler
+@app.get("/api/predict_by_date/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+async def predict_by_date(emiten_name: str) -> List[AnyComponent]:
+    return [
+        c.Page(
+            components=[
+                c.Heading(text=f'Predict by Date for {emiten_name}', level=2),
+                c.ModelForm(model=DateRangeForm, display_mode='page', submit_url=f'/api/predict_result/{emiten_name}'),
+            ]
+        ),
+    ]
+
+@exception_handler
+@app.post("/api/predict_result/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+async def predict_result(emiten_name: str, start_date: date = Form(...), end_date: date = Form(...)) -> List[AnyComponent]:
+    accuracy, plot_url = predict_with_loaded_model(emiten_name, start_date, end_date)
+    if accuracy is None:
+        return [
+            c.Page(
+                components=[
+                    c.Heading(text=f'Prediction Error for {emiten_name}', level=2),
+                    c.Paragraph(text='There was an error in processing your prediction. Please check the input data and try again.'),
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}')),
+                ]
+            ),
+        ]
+
+    return [
+        c.Page(
+            components=[
+                c.Heading(text=f'Prediction Accuracy for {emiten_name}', level=2),
+                c.Paragraph(text=f'Accuracy: {accuracy}'),
+                c.Image(src=plot_url, alt='Prediction Plot', width=1000, height=500, loading='lazy', referrer_policy='no-referrer', class_name='border rounded'),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}')),
+            ]
+        ),
+    ]
+
 @app.get("/api/navigation/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def navigation(emiten_name: str) -> List[Any]:
     return [
@@ -133,14 +192,13 @@ def navigation(emiten_name: str) -> List[Any]:
             components=[
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
                 c.Heading(text='Select Action for Emiten', level=2),
-                # c.Button(text='Secondary Button', named_style='secondary', class_name='+ ms-2')
-                c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Charts', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
-                c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='+ ms-2'),
+                c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Charts', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
@@ -158,7 +216,7 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
                 c.Table(
                     data=detail_emiten,
                     columns=[
-                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/')),
+                        DisplayLookup(field='kode_emiten'),
                         DisplayLookup(field='open'),
                         DisplayLookup(field='high'),
                         DisplayLookup(field='low'),
@@ -203,14 +261,14 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
     lstm_data = get_table_data(emiten_name, 'tb_lstm')
     lstm_data = [ErrorMetricsResponse(**{**item, 'kode_emiten': emiten_name}) for item in lstm_data]
     return [
-        c.Page( 
+        c.Page(
             components=[
                 c.Heading(text='Error Metrics', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=lstm_data,
                     columns=[
-                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/error_metrics')),
+                        DisplayLookup(field='kode_emiten'),
                         DisplayLookup(field='RMSE'),
                         DisplayLookup(field='MAPE'),
                         DisplayLookup(field='MAE'),
@@ -228,14 +286,14 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
     tb_prediction_lstm = get_table_data(emiten_name, 'tb_prediction_lstm')
     tb_prediction_lstm = [PredictionLSTM(**{**item, 'kode_emiten': emiten_name}) for item in tb_prediction_lstm]
     return [
-        c.Page( 
+        c.Page(
             components=[
                 c.Heading(text='Error Metrics', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=tb_prediction_lstm,
                     columns=[
-                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/error_metrics')),
+                        DisplayLookup(field='kode_emiten'),
                         DisplayLookup(field='max_price'),
                         DisplayLookup(field='min_price'),
                         DisplayLookup(field='max_price_date'),
@@ -253,14 +311,14 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
     ichimoku_status_data = get_table_data(emiten_name, 'tb_ichimoku_status')
     ichimoku_status_data = [IchimokuStatus(**{**item, 'kode_emiten': emiten_name}) for item in ichimoku_status_data]
     return [
-        c.Page( 
+        c.Page(
             components=[
                 c.Heading(text='Ichimoku Status', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=ichimoku_status_data,
                     columns=[
-                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/ichimoku_status')),
+                        DisplayLookup(field='kode_emiten'),
                         DisplayLookup(field='sen_status'),
                         DisplayLookup(field='span_status'),
                         DisplayLookup(field='date', mode=DisplayMode.date),
@@ -269,10 +327,6 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
             ]
         ),
     ]
-
-# @app.get("/image/")
-# def get_image():
-#     return FileResponse("BBCA.JK.png")
 
 @app.get("/api/charts/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def charts_table(emiten_name: str) -> List[Any]:
@@ -292,7 +346,7 @@ def charts_table(emiten_name: str) -> List[Any]:
                 c.Table(
                     data=emiten_chart,
                     columns=[
-                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/charts')),
+                        DisplayLookup(field='kode_emiten'),
                         DisplayLookup(field='pic_closing_price'),
                         DisplayLookup(field='pic_sales_volume'),
                         DisplayLookup(field='pic_price_history'),
@@ -307,10 +361,10 @@ def charts_table(emiten_name: str) -> List[Any]:
         c.Div(
             components=[
                 c.Heading(text='Accuracy LSTM', level=2),
-                c.Paragraph(text='this is show how accurate the LSTM model.'),
+                c.Paragraph(text='This shows how accurate the LSTM model is.'),
                 c.Image(
                     src=image_path_accuracy,
-                    alt='Pydantic Logo',
+                    alt='Accuracy LSTM',
                     width=1000,
                     height=500,
                     loading='lazy',
@@ -322,11 +376,11 @@ def charts_table(emiten_name: str) -> List[Any]:
         ),
         c.Div(
             components=[
-                c.Heading(text='Adj Close Price', level=2),
-                c.Paragraph(text='this is show the adjusted close price of the stock.'),
+                c.Heading(text='Adjusted Close Price', level=2),
+                c.Paragraph(text='This shows the adjusted close price of the stock.'),
                 c.Image(
                     src=image_path_adj_closing,
-                    alt='Pydantic Logo',
+                    alt='Adjusted Close Price',
                     width=1000,
                     height=500,
                     loading='lazy',
@@ -339,10 +393,10 @@ def charts_table(emiten_name: str) -> List[Any]:
         c.Div(
             components=[
                 c.Heading(text='Close Price History', level=2),
-                c.Paragraph(text='this is show the close price history of the stock.'),
+                c.Paragraph(text='This shows the close price history of the stock.'),
                 c.Image(
                     src=image_path_close_price,
-                    alt='Pydantic Logo',
+                    alt='Close Price History',
                     width=1000,
                     height=500,
                     loading='lazy',
@@ -355,10 +409,10 @@ def charts_table(emiten_name: str) -> List[Any]:
         c.Div(
             components=[
                 c.Heading(text='Ichimoku Cloud', level=2),
-                c.Paragraph(text='this is show the ichimoku cloud of the stock.'),
+                c.Paragraph(text='This shows the ichimoku cloud of the stock.'),
                 c.Image(
                     src=image_path_ichimoku,
-                    alt='Pydantic Logo',
+                    alt='Ichimoku Cloud',
                     width=1000,
                     height=500,
                     loading='lazy',
@@ -371,10 +425,10 @@ def charts_table(emiten_name: str) -> List[Any]:
         c.Div(
             components=[
                 c.Heading(text='Prediction', level=2),
-                c.Paragraph(text='this is show the Prediction Close Proce the Stock'),
+                c.Paragraph(text='This shows the predicted close price of the stock.'),
                 c.Image(
                     src=image_path_prediction,
-                    alt='Pydantic Logo',
+                    alt='Prediction',
                     width=1000,
                     height=500,
                     loading='lazy',
@@ -387,10 +441,10 @@ def charts_table(emiten_name: str) -> List[Any]:
         c.Div(
             components=[
                 c.Heading(text='Sales Volume', level=2),
-                c.Paragraph(text='this is show the Sales Volume of the Stock'),
+                c.Paragraph(text='This shows the sales volume of the stock.'),
                 c.Image(
                     src=image_path_sales_volume,
-                    alt='Pydantic Logo',
+                    alt='Sales Volume',
                     width=1000,
                     height=500,
                     loading='lazy',
@@ -408,14 +462,14 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
     accuracy_ichimoku_cloud = get_table_data(emiten_name, 'tb_accuracy_ichimoku_cloud')
     accuracy_ichimoku_cloud = [IchimokuAccuracy(**{**item, 'kode_emiten': emiten_name}) for item in accuracy_ichimoku_cloud]
     return [
-        c.Page( 
+        c.Page(
             components=[
                 c.Heading(text='Ichimoku Accuracy', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=accuracy_ichimoku_cloud,
                     columns=[
-                        DisplayLookup(field='kode_emiten', on_click=GoToEvent(url='/emiten/{kode_emiten}/ichimoku_status')),
+                        DisplayLookup(field='kode_emiten'),
                         DisplayLookup(field='percent_1_hari_sen'),
                         DisplayLookup(field='percent_1_minggu_sen'),
                         DisplayLookup(field='percent_1_bulan_sen'),

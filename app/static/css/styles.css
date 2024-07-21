@@ -1,0 +1,31 @@
+@import 'https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css';
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f8f9fa;
+    color: #212529;
+}
+
+.center-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    text-align: center;
+}
+
+.border-top {
+    border-top: 1px solid #dee2e6;
+}
+
+.mt-3 {
+    margin-top: 1rem;
+}
+
+.pt-1 {
+    padding-top: 0.25rem;
+}
+
+.ms-2 {
+    margin-left: 0.5rem;
+}
