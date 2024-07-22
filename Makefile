@@ -3,3 +3,6 @@ jupyter:
 
 fastui:
 	fastapi dev main.py
+
+fastui2: 
+	uvicorn app.main:app --reload

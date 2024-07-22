@@ -13,17 +13,11 @@ from app.sql import get_table_data
 from app.predict import predict_with_loaded_model
 from app.exception import exception_handler
 
-from pydantic import BaseModel, Field
-from typing import List, Any
-from datetime import date
 from fastapi import FastAPI, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, FileResponse
-from fastui import FastUI, AnyComponent, prebuilt_html, components as c
-from fastui.components.display import DisplayMode, DisplayLookup
-from fastui.events import GoToEvent, BackEvent, PageEvent
+from fastapi.responses import FileResponse
+from fastui.events import BackEvent, PageEvent
 from fastui.forms import fastui_form
-from integrations import get_table_data, exception_handler, blob_to_data_url
-from fastapi.responses import RedirectResponse
+from integrations import exception_handler, blob_to_data_url
 import os
 from fastapi.staticfiles import StaticFiles
 import json
@@ -31,6 +25,7 @@ import json
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static2", StaticFiles(directory="picture"), name="static")
 
 class EmitenForm(BaseModel):
     emiten_name: str = Field(title="Emiten Code")
@@ -134,6 +129,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
     return [
         c.Page(
             components=[
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
                 c.Heading(text='Select Action for Emiten', level=2),
                 c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -153,6 +149,7 @@ async def predict_by_date(emiten_name: str) -> List[AnyComponent]:
     return [
         c.Page(
             components=[
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Heading(text=f'Predict by Date for {emiten_name}', level=2),
                 c.ModelForm(model=DateRangeForm, display_mode='page', submit_url=f'/api/predict_result/{emiten_name}'),
             ]
@@ -167,6 +164,7 @@ async def predict_result(emiten_name: str, start_date: date = Form(...), end_dat
         return [
             c.Page(
                 components=[
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                     c.Heading(text=f'Prediction Error for {emiten_name}', level=2),
                     c.Paragraph(text='There was an error in processing your prediction. Please check the input data and try again.'),
                     c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}')),
@@ -199,6 +197,7 @@ def navigation(emiten_name: str) -> List[Any]:
                 c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
@@ -331,12 +330,12 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
 @app.get("/api/charts/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def charts_table(emiten_name: str) -> List[Any]:
     emiten_chart = get_table_data(emiten_name, 'tb_summary')
-    image_path_accuracy = f"/static/accuracy/{emiten_name}.png"
-    image_path_adj_closing = f"/static/adj_closing_price/{emiten_name}.png"
-    image_path_close_price = f"/static/close_price_history/{emiten_name}.png"
-    image_path_ichimoku = f"/static/ichimoku/{emiten_name}.png"
-    image_path_prediction = f"/static/prediction/{emiten_name}.png"
-    image_path_sales_volume = f"/static/sales_volume/{emiten_name}.png"
+    image_path_accuracy = f"/static2/accuracy/{emiten_name}.png"
+    image_path_adj_closing = f"/static2/adj_closing_price/{emiten_name}.png"
+    image_path_close_price = f"/static2/close_price_history/{emiten_name}.png"
+    image_path_ichimoku = f"/static2/ichimoku/{emiten_name}.png"
+    image_path_prediction = f"/static2/prediction/{emiten_name}.png"
+    image_path_sales_volume = f"/static2/sales_volume/{emiten_name}.png"
     emiten_chart = [ChartResponse(**{**item, 'kode_emiten': emiten_name}) for item in emiten_chart]
     return [
         c.Page(
