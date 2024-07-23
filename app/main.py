@@ -10,7 +10,7 @@ from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent
 from fastapi.staticfiles import StaticFiles
 from app.sql import get_table_data
-from app.predict import predict_with_loaded_model
+from app.predict import predict_with_loaded_model, predict_future
 from app.exception import exception_handler
 
 from fastapi import FastAPI, HTTPException, Request, Form
@@ -33,6 +33,9 @@ class EmitenForm(BaseModel):
 class DateRangeForm(BaseModel):
     start_date: date = Field(title="Start Date")
     end_date: date = Field(title="End Date")
+
+class DateEndRangeForm(BaseModel):
+    date: int = Field(title="Future Date")
 
 class IchimokuData(BaseModel):
     kode_emiten: str
@@ -138,7 +141,8 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                 c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Accuracy by Date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
@@ -150,7 +154,7 @@ async def predict_by_date(emiten_name: str) -> List[AnyComponent]:
         c.Page(
             components=[
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
-                c.Heading(text=f'Predict by Date for {emiten_name}', level=2),
+                c.Heading(text=f'Accuracy Predict by Date for {emiten_name}', level=2),
                 c.ModelForm(model=DateRangeForm, display_mode='page', submit_url=f'/api/predict_result/{emiten_name}'),
             ]
         ),
@@ -182,6 +186,49 @@ async def predict_result(emiten_name: str, start_date: date = Form(...), end_dat
             ]
         ),
     ]
+    
+@exception_handler
+@app.get("/api/predict_price_by_date/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+async def predict_price_by_date(emiten_name: str) -> List[AnyComponent]:
+    return [
+        c.Page(
+            components=[
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Heading(text=f'Accuracy Predict by Date for {emiten_name}', level=2),
+                c.ModelForm(model=DateEndRangeForm, display_mode='page', submit_url=f'/api/predict_price/{emiten_name}'),
+            ]
+        ),
+    ]
+
+@exception_handler
+@app.post("/api/predict_price/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+async def predict_result(emiten_name: str, date: int = Form(...)) -> List[AnyComponent]:
+    predictions, plot_url = predict_future(emiten_name, date)
+    if predictions is None:
+        return [
+            c.Page(
+                components=[
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                    c.Heading(text=f'Prediction Error for {emiten_name}', level=2),
+                    c.Paragraph(text='There was an error in processing your prediction. Please check the input data and try again.'),
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}')),
+                ]
+            ),
+        ]
+
+    highest_price, lowest_price, max_price_date, min_price_date = predictions
+
+    return [
+        c.Page(
+            components=[
+                c.Heading(text=f'Prediction for {emiten_name}', level=2),
+                c.Paragraph(text=f'Highest Price: {highest_price} on {max_price_date}'),
+                c.Paragraph(text=f'Lowest Price: {lowest_price} on {min_price_date}'),
+                c.Image(src=plot_url, alt='Prediction Plot', width=1000, height=500, loading='lazy', referrer_policy='no-referrer', class_name='border rounded'),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}')),
+            ]
+        ),
+    ]
 
 @app.get("/api/navigation/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def navigation(emiten_name: str) -> List[Any]:
@@ -198,6 +245,7 @@ def navigation(emiten_name: str) -> List[Any]:
                 c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
