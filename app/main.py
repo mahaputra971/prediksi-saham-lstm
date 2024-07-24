@@ -1,6 +1,6 @@
 # app/main.py
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, ValidationError, ValidationInfo
 from typing import List, Any
 from datetime import date
 from fastapi import FastAPI, Form
@@ -22,6 +22,8 @@ from integrations import exception_handler, blob_to_data_url
 import os
 from fastapi.staticfiles import StaticFiles
 import json
+from datetime import datetime
+import yfinance as yf
 
 
 app = FastAPI()
@@ -37,9 +39,45 @@ class DateRangeForm(BaseModel):
 
 class DateEndRangeForm(BaseModel):
     date: int = Field(title="Future Days")
-    
-class IchimokuForm(BaseModel): 
+
+    @field_validator('date')
+    def check_date(cls, v, info: ValidationInfo):
+        emiten_name = info.context.get('emiten_name')
+        if not emiten_name:
+            raise ValueError("Emiten name is required for validation")
+        
+        # Download stock data to determine the available historical data length
+        data = yf.download(emiten_name)
+        if data.empty:
+            raise ValueError(f"No historical data found for {emiten_name}")
+        
+        available_days = len(data)
+        if v > available_days - 60:
+            raise ValueError(f"The value must be less than or equal to {available_days - 60}")
+        return v
+
+class IchimokuForm(BaseModel):
     specific_date: date = Field(title="Specific Date")
+
+    @field_validator('specific_date')
+    def check_specific_date(cls, v, info: ValidationInfo):
+        emiten_name = info.context.get('emiten_name')
+        if not emiten_name:
+            raise ValueError("Emiten name is required for validation")
+        
+        # Download stock data to determine the latest available date
+        data = yf.download(emiten_name)
+        if data.empty:
+            raise ValueError(f"No historical data found for {emiten_name}")
+        
+        latest_date = data.index.max().date()
+        earliest_date = data.index.min().date()
+        if v > latest_date:
+            raise ValueError(f"The date {v} is beyond the latest available date {latest_date} in the historical data for {emiten_name}")
+        if v < earliest_date:
+            raise ValueError(f"The date {v} is less than the earliest available date {earliest_date} in the historical data for {emiten_name}")
+        return v
+
 
 class IchimokuData(BaseModel):
     kode_emiten: str
@@ -137,8 +175,13 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
     return [
         c.Page(
             components=[
-                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
                 c.Heading(text='Select Action for Emiten', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
+            ]
+        ),
+        c.Page(
+            components=[
+                c.Heading(text='Result Analyst Data', level=4),
                 c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -146,11 +189,16 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                 c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Accuracy by Date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
+        c.Page(
+            components=[
+                c.Heading(text='Calculate By Yourself', level=4),
+                c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+            ]
+        )
     ]
 
 @exception_handler
@@ -176,7 +224,7 @@ async def predict_result(emiten_name: str, start_date: date = Form(...), end_dat
                 components=[
                     c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                     c.Heading(text=f'Prediction Error for {emiten_name}', level=2),
-                    c.Paragraph(text='There was an error in processing your prediction. Please check the input data and try again.'),
+                    c.Paragraph(text='There was an error in processing your prediction, make sure not less than 150 days and not fill end date with future date . Please check the input data and try again.'),
                     c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}')),
                 ]
             ),
@@ -200,15 +248,31 @@ async def predict_price_by_date(emiten_name: str) -> List[AnyComponent]:
         c.Page(
             components=[
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
-                c.Heading(text=f'Accuracy Predict by Date for {emiten_name}', level=2),
+                c.Heading(text=f'Predict Price by Date for {emiten_name}', level=2),
                 c.ModelForm(model=DateEndRangeForm, display_mode='page', submit_url=f'/api/predict_price/{emiten_name}'),
             ]
         ),
     ]
 
-@exception_handler
 @app.post("/api/predict_price/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
-async def predict_result(emiten_name: str, date: int = Form(...)) -> List[AnyComponent]:
+async def predict_price(emiten_name: str, date: int = Form(...)) -> List[AnyComponent]:
+    try:
+        # Validasi input dengan menyuntikkan emiten_name ke dalam context
+        form_data = {"date": date}
+        validator_context = {"emiten_name": emiten_name}
+        DateEndRangeForm.model_validate(form_data, context=validator_context)
+    except ValidationError as e:
+        return [
+            c.Page(
+                components=[
+                    c.Heading(text='Input Error', level=2),
+                    c.Paragraph(text=str(e)),
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}')),
+                ]
+            )
+        ]
+    
+    # Lanjutkan dengan prediksi jika input valid
     predictions, plot_url = predict_future(emiten_name, date)
     if predictions is None:
         return [
@@ -241,8 +305,13 @@ def navigation(emiten_name: str) -> List[Any]:
     return [
         c.Page(
             components=[
-                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
                 c.Heading(text='Select Action for Emiten', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
+            ]
+        ),
+        c.Page(
+            components=[
+                c.Heading(text='Result Analyst Data', level=4),
                 c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -250,11 +319,16 @@ def navigation(emiten_name: str) -> List[Any]:
                 c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
+        c.Page(
+            components=[
+                c.Heading(text='Calculate By Yourself', level=4),
+                c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+            ]
+        )
     ]
 
 @exception_handler
@@ -539,12 +613,12 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
 
 @exception_handler
 @app.get("/api/ichimoku_by_date/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
-async def predict_by_date(emiten_name: str) -> List[AnyComponent]:
+async def ichimoku_by_date(emiten_name: str) -> List[AnyComponent]:
     return [
         c.Page(
             components=[
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
-                c.Heading(text=f'Ichimoku Cloud Status by date for {emiten_name}', level=2),
+                c.Heading(text=f'Ichimoku Cloud Status by Date for {emiten_name}', level=2),
                 c.ModelForm(model=IchimokuForm, display_mode='page', submit_url=f'/api/ichimoku_by_date_result/{emiten_name}'),
             ]
         ),
@@ -552,16 +626,33 @@ async def predict_by_date(emiten_name: str) -> List[AnyComponent]:
     
 @exception_handler
 @app.post("/api/ichimoku_by_date_result/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
-async def predict_result(emiten_name: str, specific_date: date = Form(...)) -> List[AnyComponent]:
+async def ichimoku_by_date_result(emiten_name: str, specific_date: date = Form(...)) -> List[AnyComponent]:
+    try:
+        # Validasi input dengan menyuntikkan emiten_name ke dalam context
+        form_data = {"specific_date": specific_date}
+        validator_context = {"emiten_name": emiten_name}
+        IchimokuForm.model_validate(form_data, context=validator_context)
+    except ValidationError as e:
+        return [
+            c.Page(
+                components=[
+                    c.Heading(text='Input Error', level=2),
+                    c.Paragraph(text=str(e)),
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}')),
+                ]
+            )
+        ]
+    
+    # Lanjutkan dengan prediksi jika input valid
     span_status, sen_status = ichimoku_predict(emiten_name, specific_date)
-    if span_status and sen_status is None:
+    if span_status is None or sen_status is None:
         return [
             c.Page(
                 components=[
                     c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                     c.Heading(text=f'Prediction Error for {emiten_name}', level=2),
                     c.Paragraph(text='There was an error in processing your prediction. Please check the input data and try again.'),
-                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}')),
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}')),
                 ]
             ),
         ]
@@ -569,10 +660,9 @@ async def predict_result(emiten_name: str, specific_date: date = Form(...)) -> L
     return [
         c.Page(
             components=[
-                c.Heading(text=f'Prediction Ichimoku for {emiten_name} When {specific_date}\n', level=2),
-                c.Heading(text=f'Span Status {span_status}', level=3),
-                c.Heading(text=f'Sen Status {sen_status}', level=3),
-                # c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}')),
+                c.Heading(text=f'Span Status: {span_status}', level=3),
+                c.Heading(text=f'Sen Status: {sen_status}', level=3),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}')),
             ]
         ),
     ]

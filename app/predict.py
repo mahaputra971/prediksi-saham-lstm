@@ -86,7 +86,7 @@ def predict_with_loaded_model(stock, start_date, end_date):
     plt.plot(company_df.index[-len(predictions):], predictions, color='r', label='Predicted Price')
     plt.plot(company_df.index[-len(predictions):], actual, color='b', label='Actual Price')
     plt.legend()
-    plot_path = f"/static/predictions/{stock}_{start_date}_to_{end_date}.png"
+    plot_path = f"/static/predictions/{stock}_{start_date}_to_{end_date}_{datetime.now().timestamp()}.png"
     plt.savefig(f"app{plot_path}")
     plt.close()
 
@@ -126,10 +126,14 @@ def predict_future(stock, future_days):
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled_data = scaler.fit_transform(dataset)
     
-    data_for_prediction = scaled_data[-(future_days + 60):]
+    # Check if there's enough data for the requested future_days
+    if len(scaled_data) < (60 + future_days):
+        raise ValueError(f"Not enough historical data to support a prediction for {future_days} days. Please reduce the number of future days.")
+    
+    data_for_prediction = scaled_data[-(60 + future_days):]
     x_future = []
 
-    for i in range(60, len(data_for_prediction)):
+    for i in range(60, 60 + future_days):
         x_future.append(data_for_prediction[i-60:i, 0])
 
     x_future = np.array(x_future)
@@ -162,7 +166,7 @@ def predict_future(stock, future_days):
     plt.ylabel('Close Price IDR', fontsize=18)
     plt.plot(future_dates, future_predictions, color='r', label='Predicted Price')
     plt.legend()
-    plot_path = f"/static/predictions/{stock}future.png"
+    plot_path = f"/static/predictions/{stock}_future_{future_days}_days_{datetime.now().timestamp()}.png"
     plt.savefig(f"app{plot_path}")
     plt.close()
 
