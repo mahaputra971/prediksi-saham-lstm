@@ -5,9 +5,10 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
 from datetime import datetime
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
-from app.sql import get_emiten_id, get_model_id_by_emiten, fetch_stock_data, load_model_from_db
+from app.sql import get_emiten_id, get_model_id_by_emiten, fetch_stock_data, load_model_from_db, get_table_data
 import tempfile
 from datetime import datetime, timedelta
+from integrations.ic_project import ichimoku_sql, interpret_sen_status, get_senkou_span_status
 
 from pandas_datareader.data import DataReader
 import yfinance as yf
@@ -179,3 +180,65 @@ def predict_future(stock, future_days):
     predictions = (highest_prediction, lowest_prediction, max_price_date, min_price_date)
 
     return predictions, plot_path
+
+def ichimoku_predict(stock, specific_date): 
+    # Mengambil data Ichimoku dari database
+    data_ichimoku = get_table_data(stock, 'tb_data_ichimoku_cloud')
+    # print(f'186: {data_ichimoku}\n')
+    # print(f'187: {specific_date}')
+
+    # Konversi daftar dictionary menjadi DataFrame
+    df = pd.DataFrame(data_ichimoku)
+    print(f'191: {df}')
+
+    # Konversi kolom 'date' menjadi datetime
+    df['date'] = pd.to_datetime(df['date'])
+    # print(f'195: {df["date"]}')
+    # print(f'195 (dtype): {df["date"].dtype}')
+
+    # Konversi specific_date menjadi datetime jika dalam format string
+    if isinstance(specific_date, str):
+        specific_date = datetime.strptime(specific_date, '%Y-%m-%d')
+    elif isinstance(specific_date, datetime):
+        specific_date = specific_date.date()  # Pastikan specific_date dalam tipe date
+    
+    # Konversi specific_date menjadi dtype yang sama dengan kolom df['date']
+    specific_date = pd.to_datetime(specific_date)
+    # print(f'201: specific_date as datetime: {specific_date}')
+    # print(f'201 (dtype): {type(specific_date)}')
+
+    # Memilih baris dengan tanggal yang spesifik
+    row = df.loc[df['date'] == specific_date]
+    # print(f'205: row before while loop: {row}')
+
+    # Jika baris 'row' kosong, decrement tanggal satu hari dan coba lagi
+    while row.empty:
+        specific_date -= timedelta(days=1)
+        # print(f'209: specific_date in while loop: {specific_date}')
+        if specific_date.year < 1970:
+            raise ValueError("No data available for the specified date and previous dates.")
+        row = df.loc[df['date'] == specific_date]
+        # print(f'213: row in while loop: {row}')
+
+    # Sekarang 'row' berisi data untuk tanggal pertama yang memiliki data
+    tenkan_sen = row['tenkan_sen'].values[0]
+    kijun_sen = row['kijun_sen'].values[0]
+    senkou_span_a = row['senkou_span_a'].values[0]
+    senkou_span_b = row['senkou_span_b'].values[0]
+    print(f'228: {tenkan_sen}')
+    print(f'229: {kijun_sen}')
+    print(f'230: {senkou_span_a}')
+    print(f'231: {senkou_span_b}')
+    
+    # Mendownload data harga saham
+    data = yf.download(stock)
+    close_value = data.loc[specific_date.strftime('%Y-%m-%d'), 'Close']
+    print(f'236: {close_value}')
+    
+    # Mendapatkan status Senkou Span dan status Sen
+    span_status = get_senkou_span_status(close_value, senkou_span_a, senkou_span_b)
+    sen_status = interpret_sen_status(close_value, tenkan_sen, kijun_sen) 
+    print(f'241: {span_status}')
+    print(f'242: {sen_status}')
+    
+    return span_status, sen_status

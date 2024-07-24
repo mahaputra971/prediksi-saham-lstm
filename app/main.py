@@ -10,8 +10,9 @@ from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent
 from fastapi.staticfiles import StaticFiles
 from app.sql import get_table_data
-from app.predict import predict_with_loaded_model, predict_future
+from app.predict import predict_with_loaded_model, predict_future, ichimoku_predict
 from app.exception import exception_handler
+
 
 from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import FileResponse
@@ -35,7 +36,10 @@ class DateRangeForm(BaseModel):
     end_date: date = Field(title="End Date")
 
 class DateEndRangeForm(BaseModel):
-    date: int = Field(title="Future Date")
+    date: int = Field(title="Future Days")
+    
+class IchimokuForm(BaseModel): 
+    specific_date: date = Field(title="Specific Date")
 
 class IchimokuData(BaseModel):
     kode_emiten: str
@@ -109,6 +113,7 @@ class IchimokuAccuracy(BaseModel):
     percent_1_bulan_span: float
     date: date
 
+
 @exception_handler
 @app.get("/")
 async def root():
@@ -143,6 +148,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                 c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Accuracy by Date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
@@ -246,6 +252,7 @@ def navigation(emiten_name: str) -> List[Any]:
                 c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
@@ -526,6 +533,46 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
                         DisplayLookup(field='date', mode=DisplayMode.date),
                     ],
                 ),
+            ]
+        ),
+    ]
+
+@exception_handler
+@app.get("/api/ichimoku_by_date/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+async def predict_by_date(emiten_name: str) -> List[AnyComponent]:
+    return [
+        c.Page(
+            components=[
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Heading(text=f'Ichimoku Cloud Status by date for {emiten_name}', level=2),
+                c.ModelForm(model=IchimokuForm, display_mode='page', submit_url=f'/api/ichimoku_by_date_result/{emiten_name}'),
+            ]
+        ),
+    ]
+    
+@exception_handler
+@app.post("/api/ichimoku_by_date_result/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+async def predict_result(emiten_name: str, specific_date: date = Form(...)) -> List[AnyComponent]:
+    span_status, sen_status = ichimoku_predict(emiten_name, specific_date)
+    if span_status and sen_status is None:
+        return [
+            c.Page(
+                components=[
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                    c.Heading(text=f'Prediction Error for {emiten_name}', level=2),
+                    c.Paragraph(text='There was an error in processing your prediction. Please check the input data and try again.'),
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}')),
+                ]
+            ),
+        ]
+
+    return [
+        c.Page(
+            components=[
+                c.Heading(text=f'Prediction Ichimoku for {emiten_name} When {specific_date}\n', level=2),
+                c.Heading(text=f'Span Status {span_status}', level=3),
+                c.Heading(text=f'Sen Status {sen_status}', level=3),
+                # c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}')),
             ]
         ),
     ]

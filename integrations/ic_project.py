@@ -327,6 +327,7 @@ def interpret_sen_status(last_close, last_tenkan_sen, last_kijun_sen):
     
     return status_sen
 
+# Fix Function Ichimoku
 def ichimoku_sql(stock):
     print("ichimoku_project function called")
     
