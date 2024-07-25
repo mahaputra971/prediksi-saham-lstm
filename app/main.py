@@ -10,7 +10,7 @@ from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent
 from fastapi.staticfiles import StaticFiles
 from app.sql import get_table_data
-from app.predict import predict_with_loaded_model, predict_future, ichimoku_predict
+from app.predict import predict_with_loaded_model, predict_future, ichimoku_predict, train_and_evaluate_model
 from app.exception import exception_handler
 
 
@@ -22,7 +22,7 @@ from integrations import exception_handler, blob_to_data_url
 import os
 from fastapi.staticfiles import StaticFiles
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import yfinance as yf
 
 
@@ -78,7 +78,49 @@ class IchimokuForm(BaseModel):
             raise ValueError(f"The date {v} is less than the earliest available date {earliest_date} in the historical data for {emiten_name}")
         return v
 
+class LSTMForm(BaseModel):
+    start_date: date = Field(title="Start Date")
+    end_date: date = Field(title="End Date")
+    future_date: date = Field(title="Future Date")
 
+    @field_validator('start_date')
+    def check_start_date(cls, v, info: ValidationInfo):
+        emiten_name = info.context.get('emiten_name')
+        if not emiten_name:
+            raise ValueError("Emiten name is required for validation")
+        
+        data = yf.download(emiten_name)
+        if data.empty:
+            raise ValueError(f"No historical data found for {emiten_name}")
+        
+        earliest_date = data.index.min().date()
+        if v < earliest_date:
+            raise ValueError(f"The start date {v} is earlier than the earliest available data date {earliest_date}")
+        return v
+
+    @field_validator('end_date')
+    def check_end_date(cls, v, info: ValidationInfo):
+        if 'start_date' in info.data and v <= info.data['start_date']:
+            raise ValueError("End date must be after the start date")
+        return v
+
+    @field_validator('future_date')
+    def check_future_date(cls, v, info: ValidationInfo):
+        emiten_name = info.context.get('emiten_name')
+        if not emiten_name:
+            raise ValueError("Emiten name is required for validation")
+
+        data = yf.download(emiten_name)
+        if data.empty:
+            raise ValueError(f"No historical data found for {emiten_name}")
+
+        latest_date = data.index.max().date()
+        if v > latest_date:
+            raise ValueError(f"The future date {v} is beyond the latest available data date {latest_date}")
+        if (latest_date - timedelta(days=60)) < info.data['end_date']:
+            raise ValueError(f"End date must be at least 60 days before the latest data date {latest_date}")
+        return v
+    
 class IchimokuData(BaseModel):
     kode_emiten: str
     tenkan_sen: int
@@ -197,6 +239,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                 c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
                 c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
                 c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
             ]
         )
     ]
@@ -327,6 +370,7 @@ def navigation(emiten_name: str) -> List[Any]:
                 c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
                 c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
                 c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
             ]
         )
     ]
@@ -667,6 +711,65 @@ async def ichimoku_by_date_result(emiten_name: str, specific_date: date = Form(.
         ),
     ]
 
+#LSTM    
+@exception_handler
+@app.get("/api/lstm_accuracy/{emiten_name}""/api/lstm_accuracy/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+async def ichimoku_by_date(emiten_name: str) -> List[AnyComponent]:
+    return [
+        c.Page(
+            components=[
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Heading(text=f'LSTM by Date for {emiten_name}', level=2),
+                c.ModelForm(model=LSTMForm, display_mode='page', submit_url=f'/api/lstm_accuracy_result/{emiten_name}'),
+            ]
+        ),
+    ]
+
+@exception_handler
+@app.post("/api/lstm_accuracy_result/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+async def lstm_accuracy_result(emiten_name: str, start_date: date = Form(...), end_date: date = Form(...), future_date: date = Form(...)) -> List[AnyComponent]:
+    try:
+        # Validasi input dengan konteks emiten_name
+        form_data = {"start_date": start_date, "end_date": end_date, "future_date": future_date}
+        LSTMForm.model_validate(form_data, context={"emiten_name": emiten_name})
+    except ValidationError as e:
+        return [
+            c.Page(
+                components=[
+                    c.Heading(text='Input Error', level=2),
+                    c.Paragraph(text=str(e)),
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}')),
+                ]
+            )
+        ]
+    
+    try:
+        # Prediksi menggunakan model
+        result, plot_path = train_and_evaluate_model(emiten_name, start_date, end_date, future_date)
+    except ValueError as e:
+        return [
+            c.Page(
+                components=[
+                    c.Heading(text='Prediction Error', level=2),
+                    c.Paragraph(text=str(e)),
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}')),
+                ]
+            )
+        ]
+        
+    mae, mse, rmse, mape = result
+
+    return [
+        c.Page(
+            components=[
+                c.Heading(text=f'Prediction Results for {emiten_name}', level=2),
+                c.Paragraph(text=f'MAE: {mae}, MSE: {mse}, RMSE: {rmse}, MAPE: {mape}%'),
+                c.Image(src=plot_path, alt='LSTM Plot', width=1000, height=500, loading='lazy', referrer_policy='no-referrer', class_name='border rounded'),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}')),
+            ]
+        )
+    ]
+    
 @app.get('/{path:path}')
 async def html_landing() -> HTMLResponse:
     return HTMLResponse(prebuilt_html(title='FastUI Demo'))

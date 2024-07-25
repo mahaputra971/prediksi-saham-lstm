@@ -15,6 +15,10 @@ import yfinance as yf
 from pandas_datareader import data as pdr
 yf.pdr_override()
 import pandas as pd
+import os
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM
 
 def predict_with_loaded_model(stock, start_date, end_date):
     # Get emiten ID
@@ -246,3 +250,112 @@ def ichimoku_predict(stock, specific_date):
     print(f'242: {sen_status}')
     
     return span_status, sen_status
+
+import logging
+
+# Configuring logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def train_and_evaluate_model(stock, start_date, end_date, future_date):
+    # Mendownload data saham
+    df = yf.download(stock)
+    data = df.filter(['Close'])
+    dataset = data.values
+
+    # Konversi tanggal ke datetime
+    start_date_dt = pd.to_datetime(start_date)
+    end_date_dt = pd.to_datetime(end_date)
+    future_date_dt = pd.to_datetime(future_date)
+
+    # Validasi input tanggal
+    if start_date_dt < data.index.min():
+        raise ValueError(f"Start date {start_date} is earlier than the oldest available data date {data.index.min().strftime('%Y-%m-%d')}.")
+    if end_date_dt < start_date_dt:
+        raise ValueError("End date must be after the start date.")
+    if (data.index.max() - timedelta(days=60)) < end_date_dt:
+        raise ValueError(f"End date must be at least 60 days before the latest data date {data.index.max().strftime('%Y-%m-%d')}.")
+    if future_date_dt > data.index.max():
+        raise ValueError(f"Future date {future_date} is beyond the latest available data date {data.index.max().strftime('%Y-%m-%d')}.")
+
+    logger.info(f"Data range from {start_date_dt} to {future_date_dt}")
+
+    # Memisahkan data pelatihan dan pengujian
+    train_data = data.loc[start_date_dt:end_date_dt]
+    test_data = data.loc[end_date_dt + timedelta(days=1):future_date_dt]
+
+    # Normalisasi data
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaled_train_data = scaler.fit_transform(train_data)
+    scaled_test_data = scaler.transform(test_data)
+
+    logger.info(f"Scaled train data shape: {scaled_train_data.shape}")
+    logger.info(f"Scaled test data shape: {scaled_test_data.shape}")
+
+    # Membuat dataset pelatihan
+    x_train, y_train = [], []
+    for i in range(60, len(scaled_train_data)):
+        x_train.append(scaled_train_data[i-60:i, 0])
+        y_train.append(scaled_train_data[i, 0])
+
+    x_train, y_train = np.array(x_train), np.array(y_train)
+    x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+
+    # Membangun model LSTM
+    model = Sequential()
+    model.add(LSTM(128, return_sequences=True, input_shape=(x_train.shape[1], 1)))
+    model.add(LSTM(64, return_sequences=False))
+    model.add(Dense(25))
+    model.add(Dense(1))
+
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    model.fit(x_train, y_train, batch_size=1, epochs=1)
+
+    logger.info("Model training completed")
+
+    # Menyiapkan data pengujian
+    x_test = []
+    for i in range(60, len(scaled_test_data)):
+        x_test.append(scaled_test_data[i-60:i, 0])
+    x_test = np.array(x_test)
+    x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+
+    # Prediksi data pengujian
+    predictions = model.predict(x_test)
+    predictions = scaler.inverse_transform(predictions)
+
+    # Menyiapkan data untuk plotting
+    valid = data.loc[end_date_dt + timedelta(days=1):future_date_dt]
+    valid['Predictions'] = predictions
+
+    # Plot data
+    plt.figure(figsize=(16, 6))
+    plt.title('Model Training and Predictions')
+    plt.xlabel('Date', fontsize=18)
+    plt.ylabel('Close Price IDR', fontsize=18)
+    plt.plot(data.loc[start_date_dt:end_date_dt]['Close'], label='Train')
+    plt.plot(valid['Close'], label='Val')
+    plt.plot(valid['Predictions'], label='Predictions')
+    plt.legend(loc='lower right')
+    plot_dir = 'app/static/predictions'
+    os.makedirs(plot_dir, exist_ok=True)
+    plot_path = f'{plot_dir}/{stock}_{start_date}_to_{future_date}.png'
+    plt.savefig(f"app/{plot_path}")
+    plt.close()
+
+    logger.info(f"Plot saved to {plot_path}")
+
+    # Evaluasi model
+    mae = mean_absolute_error(valid['Close'], valid['Predictions'])
+    mse = mean_squared_error(valid['Close'], valid['Predictions'])
+    rmse = np.sqrt(mse)
+    mape = mean_absolute_percentage_error(valid['Close'], valid['Predictions'])
+
+    logger.info(f"MAE: {mae}")
+    logger.info(f"MSE: {mse}")
+    logger.info(f"RMSE: {rmse}")
+    logger.info(f"MAPE: {mape}")
+    
+    accuracy = (mae, mse, rmse, mape)
+
+    return accuracy, plot_path
