@@ -713,7 +713,7 @@ async def ichimoku_by_date_result(emiten_name: str, specific_date: date = Form(.
 
 #LSTM    
 @exception_handler
-@app.get("/api/lstm_accuracy/{emiten_name}""/api/lstm_accuracy/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+@app.get("/api/lstm_accuracy/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 async def ichimoku_by_date(emiten_name: str) -> List[AnyComponent]:
     return [
         c.Page(
