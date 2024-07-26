@@ -82,43 +82,32 @@ class LSTMForm(BaseModel):
     start_date: date = Field(title="Start Date")
     end_date: date = Field(title="End Date")
     future_date: date = Field(title="Future Date")
+    
+    @staticmethod
+    def check_date_differences(start_date, end_date, future_date):
+        start_end_diff = (end_date - start_date).days
+        if start_end_diff <= 60:
+            raise ValueError("The difference between start date and end date must be more than 60 days")
+        end_future_diff = (future_date - end_date).days
+        if start_end_diff <= end_future_diff:
+            raise ValueError("The difference between start date and end date must be greater than the difference between end date and future date")
 
     @field_validator('start_date')
     def check_start_date(cls, v, info: ValidationInfo):
-        emiten_name = info.context.get('emiten_name')
-        if not emiten_name:
-            raise ValueError("Emiten name is required for validation")
-        
-        data = yf.download(emiten_name)
-        if data.empty:
-            raise ValueError(f"No historical data found for {emiten_name}")
-        
-        earliest_date = data.index.min().date()
-        if v < earliest_date:
-            raise ValueError(f"The start date {v} is earlier than the earliest available data date {earliest_date}")
+        if 'end_date' in info.data and 'future_date' in info.data:
+            cls.check_date_differences(v, info.data['end_date'], info.data['future_date'])
         return v
 
     @field_validator('end_date')
     def check_end_date(cls, v, info: ValidationInfo):
-        if 'start_date' in info.data and v <= info.data['start_date']:
-            raise ValueError("End date must be after the start date")
+        if 'start_date' in info.data and 'future_date' in info.data:
+            cls.check_date_differences(info.data['start_date'], v, info.data['future_date'])
         return v
 
     @field_validator('future_date')
     def check_future_date(cls, v, info: ValidationInfo):
-        emiten_name = info.context.get('emiten_name')
-        if not emiten_name:
-            raise ValueError("Emiten name is required for validation")
-
-        data = yf.download(emiten_name)
-        if data.empty:
-            raise ValueError(f"No historical data found for {emiten_name}")
-
-        latest_date = data.index.max().date()
-        if v > latest_date:
-            raise ValueError(f"The future date {v} is beyond the latest available data date {latest_date}")
-        if (latest_date - timedelta(days=60)) < info.data['end_date']:
-            raise ValueError(f"End date must be at least 60 days before the latest data date {latest_date}")
+        if 'start_date' in info.data and 'end_date' in info.data:
+            cls.check_date_differences(info.data['start_date'], info.data['end_date'], v)
         return v
     
 class IchimokuData(BaseModel):
