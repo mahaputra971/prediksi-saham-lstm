@@ -192,6 +192,12 @@ class IchimokuAccuracy(BaseModel):
     percent_1_minggu_span: float
     percent_1_bulan_span: float
     date: date
+    
+class PredicValid(BaseModel):
+    kode_emiten: str 
+    Predictions: float
+    Close: float
+    Date: date
 
 
 @exception_handler
@@ -745,7 +751,10 @@ async def lstm_accuracy_result(emiten_name: str, start_date: date = Form(...), e
     
     try:
         # Prediksi menggunakan model
-        result, plot_path = train_and_evaluate_model(emiten_name, start_date, end_date, future_date)
+        result, plot_path, plot_path_2, valid = train_and_evaluate_model(emiten_name, start_date, end_date, future_date)
+        valid = valid.reset_index()
+        data = valid.to_dict('records')
+        data = [PredicValid(**{**item, 'kode_emiten': emiten_name}) for item in data]
     except ValueError as e:
         return [
             c.Page(
@@ -765,9 +774,26 @@ async def lstm_accuracy_result(emiten_name: str, start_date: date = Form(...), e
                 c.Heading(text=f'Prediction Results for {emiten_name}', level=2),
                 c.Paragraph(text=f'MAE: {mae}, MSE: {mse}, RMSE: {rmse}, MAPE: {mape}%'),
                 c.Image(src=plot_path, alt='LSTM Plot', width=1000, height=500, loading='lazy', referrer_policy='no-referrer', class_name='border rounded'),
-                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}')),
             ]
-        )
+        ), 
+        c.Div(
+            components=[
+                c.Image(src=plot_path_2, alt='LSTM Plot 2', width=1000, height=500, loading='lazy', referrer_policy='no-referrer', class_name='border rounded'),
+            ]
+        ), 
+        c.Div(
+            components=[
+                c.Table(
+                    data=data,
+                    columns=[
+                        DisplayLookup(field='kode_emiten'),
+                        DisplayLookup(field='Predictions'),
+                        DisplayLookup(field='Close'),
+                        DisplayLookup(field='Date', mode=DisplayMode.date),
+                    ],
+                )
+            ]
+        ), 
     ]
     
 @app.get('/{path:path}')

@@ -254,10 +254,9 @@ def ichimoku_predict(stock, specific_date):
 import logging
 
 # Configuring logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def train_and_evaluate_model(stock, start_date, end_date, future_date):
+def train_and_evaluate_model(stock, start_date, end_date, future_date, window_size=60):
+    future_date = future_date + timedelta(days=35)
+    
     # Mendownload data saham
     df = yf.download(stock)
     data = df.filter(['Close'])
@@ -273,8 +272,8 @@ def train_and_evaluate_model(stock, start_date, end_date, future_date):
         raise ValueError(f"Start date {start_date} is earlier than the oldest available data date {data.index.min().strftime('%Y-%m-%d')}.")
     if end_date_dt < start_date_dt:
         raise ValueError("End date must be after the start date.")
-    if (data.index.max() - timedelta(days=60)) < end_date_dt:
-        raise ValueError(f"End date must be at least 60 days before the latest data date {data.index.max().strftime('%Y-%m-%d')}.")
+    if (data.index.max() - timedelta(days=window_size)) < end_date_dt:
+        raise ValueError(f"End date must be at least {window_size} days before the latest data date {data.index.max().strftime('%Y-%m-%d')}.")
     if future_date_dt > data.index.max():
         raise ValueError(f"Future date {future_date} is beyond the latest available data date {data.index.max().strftime('%Y-%m-%d')}.")
 
@@ -282,7 +281,7 @@ def train_and_evaluate_model(stock, start_date, end_date, future_date):
 
     # Memisahkan data pelatihan dan pengujian
     train_data = data.loc[start_date_dt:end_date_dt]
-    test_data = data.loc[end_date_dt + timedelta(days=1):future_date_dt]
+    test_data = data.loc[end_date_dt - timedelta(days=window_size):future_date_dt]
 
     # Normalisasi data
     scaler = MinMaxScaler(feature_range=(0, 1))
@@ -294,8 +293,8 @@ def train_and_evaluate_model(stock, start_date, end_date, future_date):
 
     # Membuat dataset pelatihan
     x_train, y_train = [], []
-    for i in range(60, len(scaled_train_data)):
-        x_train.append(scaled_train_data[i-60:i, 0])
+    for i in range(window_size, len(scaled_train_data)):
+        x_train.append(scaled_train_data[i-window_size:i, 0])
         y_train.append(scaled_train_data[i, 0])
 
     x_train, y_train = np.array(x_train), np.array(y_train)
@@ -314,36 +313,65 @@ def train_and_evaluate_model(stock, start_date, end_date, future_date):
     logger.info("Model training completed")
 
     # Menyiapkan data pengujian
-    x_test = []
-    for i in range(60, len(scaled_test_data)):
-        x_test.append(scaled_test_data[i-60:i, 0])
-    x_test = np.array(x_test)
+    x_test, y_test = [], []
+    for i in range(window_size, len(scaled_test_data)):
+        x_test.append(scaled_test_data[i-window_size:i, 0])
+        y_test.append(scaled_test_data[i, 0])
+
+    x_test, y_test = np.array(x_test), np.array(y_test)
     x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
 
-    # Prediksi data pengujian
+    # Lakukan prediksi
     predictions = model.predict(x_test)
-    predictions = scaler.inverse_transform(predictions)
+    predictions = scaler.inverse_transform(predictions.reshape(-1, 1))
+    y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
+
+    # Data validasi
+    valid = data.loc[end_date_dt + timedelta(days=1):future_date_dt]
+
+    # Pastikan valid mencakup seluruh periode hingga future_date_dt
+    valid = valid[:len(predictions)]
+    valid['Predictions'] = predictions
+
+    print(f"len(predictions): {len(predictions)}")
+    print(f"len(valid): {len(valid)}")
+    if len(predictions) != len(valid):
+        raise ValueError(f"Mismatch in lengths: predictions({len(predictions)}), valid({len(valid)})")
 
     # Menyiapkan data untuk plotting
-    valid = data.loc[end_date_dt + timedelta(days=1):future_date_dt]
     valid['Predictions'] = predictions
+    print(valid)
 
     # Plot data
     plt.figure(figsize=(16, 6))
     plt.title('Model Training and Predictions')
     plt.xlabel('Date', fontsize=18)
     plt.ylabel('Close Price IDR', fontsize=18)
-    plt.plot(data.loc[start_date_dt:end_date_dt]['Close'], label='Train')
+    plt.plot(data.loc[start_date_dt:end_date_dt]['Close'], label='Train', color='blue')
+    plt.plot(data.loc[end_date_dt - timedelta(days=window_size):end_date_dt]['Close'], color='blue')
     plt.plot(valid['Close'], label='Val')
     plt.plot(valid['Predictions'], label='Predictions')
     plt.legend(loc='lower right')
-    plot_dir = 'app/static/predictions'
-    os.makedirs(plot_dir, exist_ok=True)
-    plot_path = f'{plot_dir}/{stock}_{start_date}_to_{future_date}.png'
-    plt.savefig(f"app/{plot_path}")
+    
+    plot_path = f"/static/predictions/{stock}_lstm_start_{start_date}_end_{end_date}_future_{future_date}_{datetime.now().timestamp()}.png"
+    plt.savefig(f"app{plot_path}")
     plt.close()
 
     logger.info(f"Plot saved to {plot_path}")
+    
+    plt.figure(figsize=(16, 6))
+    plt.title('Model Training and Predictions')
+    plt.xlabel('Date', fontsize=18)
+    plt.ylabel('Close Price IDR', fontsize=18)
+    plt.plot(valid['Close'], label='Val')
+    plt.plot(valid['Predictions'], label='Predictions')
+    plt.legend(loc='lower right')
+    
+    plot_path_2 = f"/static/predictions/{stock}_lstm_end_{end_date}_future_{future_date}_{datetime.now().timestamp()}.png"
+    plt.savefig(f"app{plot_path_2}")
+    plt.close()
+    
+    logger.info(f"Plot saved to {plot_path_2}")
 
     # Evaluasi model
     mae = mean_absolute_error(valid['Close'], valid['Predictions'])
@@ -358,4 +386,8 @@ def train_and_evaluate_model(stock, start_date, end_date, future_date):
     
     accuracy = (mae, mse, rmse, mape)
 
-    return accuracy, plot_path
+    return accuracy, plot_path, plot_path_2, valid
+
+# Logging configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
