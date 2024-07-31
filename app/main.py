@@ -9,10 +9,10 @@ from fastui import FastUI, AnyComponent, prebuilt_html, components as c
 from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent
 from fastapi.staticfiles import StaticFiles
-from app.sql import get_table_data
+from app.sql import get_table_data, get_emiten_status
 from app.predict import predict_with_loaded_model, predict_future, ichimoku_predict, train_and_evaluate_model
 from app.exception import exception_handler
-
+from app.engine import engine_main
 
 from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import FileResponse
@@ -209,35 +209,104 @@ async def home() -> List[AnyComponent]:
 @exception_handler
 @app.post("/api/submit_emiten_form", response_model=FastUI, response_model_exclude_none=True)
 async def submit_emiten_form(emiten_name: str = Form(...)):
-    return [
-        c.Page(
-            components=[
-                c.Heading(text='Select Action for Emiten', level=2),
-                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
+    status = get_emiten_status(emiten_name)
+    print(status)
+    if status == 0:
+        try: 
+            engine_main(emiten_name)
+            return [
+                c.Page(
+                    components=[    
+                        c.Heading(text='Select Action for Emiten', level=2),
+                        c.Link(components=[c.Text(text='Back to Home')], on_click=GoToEvent(url=f'/home')),
+                    ]
+                ),
+                c.Page(
+                    components=[
+                        c.Heading(text='Result Analyst Data', level=4),
+                        c.Heading(text='LSTM', level=6),
+                        c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    ]
+                ),
+                c.Div(
+                    components=[
+                        c.Heading(text='Ichimoku Cloud', level=6),
+                        c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    ]
+                ),
+                c.Page(
+                    components=[
+                        c.Heading(text='Calculate By Yourself', level=4),
+                        c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                        c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                        c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                        c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                    ]
+                )
             ]
-        ),
-        c.Page(
-            components=[
-                c.Heading(text='Result Analyst Data', level=4),
-                c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Charts', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        
+        except ValueError as e:
+            return [
+                c.Page(
+                    components=[
+                        c.Heading(text='Prediction Error', level=2),
+                        c.Paragraph(text=str(e)),
+                        c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/')),
+                    ]
+                )
             ]
-        ),
-        c.Page(
-            components=[
-                c.Heading(text='Calculate By Yourself', level=4),
-                c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-            ]
-        )
-    ]
+    elif status == None:
+        return [
+            c.Page(
+                components=[
+                    c.Heading(text='Error', level=2),
+                    c.Paragraph(text=f'The status for {emiten_name} is wrong and not available on IHSG.'),
+                    c.Link(components=[c.Text(text='Back to Home')], on_click=BackEvent()),
+                    
+                ]
+            ),
+        ]
+    else:
+        return [
+            c.Page(
+                components=[    
+                    c.Heading(text='Select Action for Emiten', level=2),
+                    c.Link(components=[c.Text(text='Back to Home')], on_click=BackEvent()),
+                ]
+            ),
+            c.Page(
+                components=[
+                    c.Heading(text='Result Analyst Data', level=4),
+                    c.Heading(text='LSTM', level=6),
+                    c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                ]
+            ),
+            c.Div(
+                components=[
+                    c.Heading(text='Ichimoku Cloud', level=6),
+                    c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                ]
+            ),
+            c.Page(
+                components=[
+                    c.Heading(text='Calculate By Yourself', level=4),
+                    c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                    c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                    c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                    c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                ]
+            )
+        ]
 
 @exception_handler
 @app.get("/api/predict_by_date/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
@@ -350,11 +419,17 @@ def navigation(emiten_name: str) -> List[Any]:
         c.Page(
             components=[
                 c.Heading(text='Result Analyst Data', level=4),
-                c.Button(text='Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Heading(text='LSTM', level=6),
+                c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+            ]
+        ),  
+        c.Page(
+            components=[
+                c.Heading(text='Ichimoku Cloud', level=6),
                 c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Error Metrics', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Charts', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Prediction', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]

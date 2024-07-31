@@ -2,6 +2,7 @@
 
 from sqlalchemy import create_engine, text, MetaData, Table
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
 from io import BytesIO
 import io
@@ -17,6 +18,19 @@ from app.exception import exception_handler
 engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
 Session = sessionmaker(bind=engine)
 session = Session()
+
+@exception_handler
+def get_emiten_status(emiten_name):
+    print(emiten_name)
+    try:
+        result = session.execute(text(f"SELECT status FROM tb_emiten WHERE kode_emiten = :emiten_name"), {'emiten_name': emiten_name})
+        status = result.scalar()
+    except SQLAlchemyError as e:
+        print(f"Database error: {e}")
+        status = None
+    finally:
+        session.close()
+    return status
 
 @exception_handler
 def show_tables():
@@ -67,7 +81,7 @@ def get_issuer():
     data_name = []
     try:
         with engine.connect() as connection:
-            query = text("SELECT kode_emiten, nama_emiten FROM tb_emiten limit 3")
+            query = text("SELECT kode_emiten, nama_emiten FROM tb_emiten limit 1")
             result = connection.execute(query)
             for row in result:
                 data_code.append(row[0])
