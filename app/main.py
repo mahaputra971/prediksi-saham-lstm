@@ -195,6 +195,11 @@ async def root():
     return RedirectResponse(url="/home")
 
 @exception_handler
+@app.get("/return")
+async def returnx():
+    return RedirectResponse(url="/home")
+
+@exception_handler
 @app.get("/api/home", response_model=FastUI, response_model_exclude_none=True)
 async def home() -> List[AnyComponent]:
     return [
@@ -218,7 +223,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                 c.Page(
                     components=[    
                         c.Heading(text='Select Action for Emiten', level=2),
-                        c.Link(components=[c.Text(text='Back to Home')], on_click=GoToEvent(url=f'/home')),
+                        c.Link(components=[c.Text(text='Back to Home')], on_click=BackEvent()),
                     ]
                 ),
                 c.Page(
@@ -256,7 +261,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                     components=[
                         c.Heading(text='Prediction Error', level=2),
                         c.Paragraph(text=str(e)),
-                        c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/')),
+                        c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
                     ]
                 )
             ]
@@ -450,10 +455,19 @@ def navigation(emiten_name: str) -> List[Any]:
 def detail_emiten_table(emiten_name: str) -> List[Any]:
     detail_emiten = get_table_data(emiten_name, 'tb_detail_emiten')
     detail_emiten = [StockPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in detail_emiten]
+    # Convert the 'date' field to datetime objects if they are strings
+    for item in detail_emiten:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in detail_emiten)
+    latest_date = max(item.date for item in detail_emiten)
     return [
         c.Page(
             components=[
-                c.Heading(text='Detail Emiten', level=2),
+                c.Heading(text=f'Detail Emiten', level=2),
+                c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=detail_emiten,
@@ -477,10 +491,18 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
 def ichimoku_data_table(emiten_name: str) -> List[Any]:
     ichimoku_data = get_table_data(emiten_name, 'tb_data_ichimoku_cloud')
     ichimoku_data = [IchimokuData(**{**item, 'kode_emiten': emiten_name}) for item in ichimoku_data]
+    for item in ichimoku_data:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in ichimoku_data)
+    latest_date = max(item.date for item in ichimoku_data)
     return [
         c.Page(
             components=[
                 c.Heading(text='Ichimoku Data', level=2),
+                c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=ichimoku_data,
@@ -502,10 +524,18 @@ def ichimoku_data_table(emiten_name: str) -> List[Any]:
 def error_metrics_table(emiten_name: str) -> List[Any]:
     lstm_data = get_table_data(emiten_name, 'tb_lstm')
     lstm_data = [ErrorMetricsResponse(**{**item, 'kode_emiten': emiten_name}) for item in lstm_data]
+    for item in lstm_data:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in lstm_data)
+    latest_date = max(item.date for item in lstm_data)
     return [
         c.Page(
             components=[
                 c.Heading(text='Error Metrics', level=2),
+                c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=lstm_data,
@@ -527,10 +557,18 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
 def error_metrics_table(emiten_name: str) -> List[Any]:
     tb_prediction_lstm = get_table_data(emiten_name, 'tb_prediction_lstm')
     tb_prediction_lstm = [PredictionLSTM(**{**item, 'kode_emiten': emiten_name}) for item in tb_prediction_lstm]
+    for item in tb_prediction_lstm:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in tb_prediction_lstm)
+    latest_date = max(item.date for item in tb_prediction_lstm)
     return [
         c.Page(
             components=[
                 c.Heading(text='Error Metrics', level=2),
+                c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=tb_prediction_lstm,
@@ -552,10 +590,18 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
 def ichimoku_status_table(emiten_name: str) -> List[Any]:
     ichimoku_status_data = get_table_data(emiten_name, 'tb_ichimoku_status')
     ichimoku_status_data = [IchimokuStatus(**{**item, 'kode_emiten': emiten_name}) for item in ichimoku_status_data]
+    for item in ichimoku_status_data:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in ichimoku_status_data)
+    latest_date = max(item.date for item in ichimoku_status_data)
     return [
         c.Page(
             components=[
                 c.Heading(text='Ichimoku Status', level=2),
+                c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=ichimoku_status_data,
@@ -703,10 +749,18 @@ def charts_table(emiten_name: str) -> List[Any]:
 def ichimoku_status_table(emiten_name: str) -> List[Any]:
     accuracy_ichimoku_cloud = get_table_data(emiten_name, 'tb_accuracy_ichimoku_cloud')
     accuracy_ichimoku_cloud = [IchimokuAccuracy(**{**item, 'kode_emiten': emiten_name}) for item in accuracy_ichimoku_cloud]
+    for item in accuracy_ichimoku_cloud:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in accuracy_ichimoku_cloud)
+    latest_date = max(item.date for item in accuracy_ichimoku_cloud)
     return [
         c.Page(
             components=[
                 c.Heading(text='Ichimoku Accuracy', level=2),
+                c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=accuracy_ichimoku_cloud,

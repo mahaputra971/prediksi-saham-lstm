@@ -1,0 +1,8 @@
+venv/
+*.ovpn
+*.pub
+*:Zone.Identifier
+creds/
+./picture
+./ichimokuproject/image
+__pycache__
