@@ -1,0 +1,37 @@
+version: '3.7'
+
+services:
+  app:
+    image:
+      build:
+        context: .
+        dockerfile: Dockerfile
+    ports:
+      - 8000:8000
+    volumes:
+      - app_data:/app
+    environment:
+      - MSYQL_STRING="server=db;database=technical_stock_ta_db;user=mahaputra971;password=secretpassword"
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+  db:
+    image: mariadb:11.4.2
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: mahaputra971
+      MYSQL_DATABASE: technical_stock_ta_db
+      MYSQL_USER: root
+      MYSQL_PASSWORD: mahaputra971
+    ports:
+      - 3307:3306
+    volumes:
+      - lstm_database:/var/lib/mysql
+    networks:
+      - app-network
+
+volumes:
+  lstm_database:
+  app_data:

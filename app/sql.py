@@ -14,8 +14,13 @@ from tensorflow.keras.models import load_model, save_model
 import tempfile
 from app.exception import exception_handler
 
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # take environment variables
+
 # Create the engine
-engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
+engine = create_engine(os.getenv('MYSQL_STRING'))
 Session = sessionmaker(bind=engine)
 session = Session()
 
