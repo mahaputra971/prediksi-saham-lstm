@@ -26,7 +26,17 @@ importlib.reload(integrations)
 from integrations import ichimoku_project, ichimoku_sql, pembuktian_ichimoku, get_issuer, get_emiten_id, insert_data_analyst, save_model_to_db, load_model_from_db, get_model_id_by_emiten
 
 # Setup the SQLAlchemy engine and session
-engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
+# engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
+# Session = sessionmaker(bind=engine)
+# session = Session()
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # take environment variables
+
+# Create the engine
+engine = create_engine(os.getenv('MYSQL_STRING'))
 Session = sessionmaker(bind=engine)
 session = Session()
 today = datetime.now().strftime("%Y-%m-%d")
