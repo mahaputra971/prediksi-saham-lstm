@@ -2,16 +2,29 @@ version: '3.7'
 
 services:
   app:
-    image:
-      build:
-        context: .
-        dockerfile: Dockerfile
+    image: mahaputra971/prediksi-saham-lstm:latest
+    env_file:
+      - .env
     ports:
       - 8000:8000
     volumes:
       - app_data:/app
     environment:
-      - MSYQL_STRING="server=db;database=technical_stock_ta_db;user=mahaputra971;password=secretpassword"
+      - MSYQL_STRING="mariadb+mariadbconnector://mahaputra971:mahaputra971@db:3306/technical_stock_ta_db"
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+  pma:
+    image: phpmyadmin/phpmyadmin:latest
+    ports:
+      - 8220:80
+    volumes:
+      - app_data:/app
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: mahaputra971
     depends_on:
       - db
     networks:
@@ -23,15 +36,24 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: mahaputra971
       MYSQL_DATABASE: technical_stock_ta_db
-      MYSQL_USER: root
+      MYSQL_USER: mahaputra971
       MYSQL_PASSWORD: mahaputra971
     ports:
       - 3307:3306
     volumes:
-      - lstm_database:/var/lib/mysql
+      - lstm_database:/var/lib/mariadb
+      - ./dump.sql:/dump.sql
     networks:
       - app-network
 
 volumes:
   lstm_database:
+    driver: local
   app_data:
+    driver: local
+  dump.sql:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
