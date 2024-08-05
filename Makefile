@@ -5,4 +5,13 @@ fastui:
 	fastapi dev main.py
 
 fastui2: 
-	uvicorn app.main:app --reload
+	uvicorn app.main:app --port 8001 --reload	
+
+build: 
+	docker build . -t mahaputra971/prediksi-saham-lstm:latest
+
+up: 
+	docker compose up -d 
+
+down: 
+	docker compose down
