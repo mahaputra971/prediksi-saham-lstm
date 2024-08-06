@@ -9,7 +9,7 @@ from fastui import FastUI, AnyComponent, prebuilt_html, components as c
 from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent
 from fastapi.staticfiles import StaticFiles
-from app.sql import get_table_data, get_emiten_status
+from app.sql import get_table_data, get_emiten_status, get_emiten_id, insert_data_analyst
 from app.predict import predict_with_loaded_model, predict_future, ichimoku_predict, train_and_evaluate_model
 from app.exception import exception_handler
 from app.engine import engine_main
@@ -455,6 +455,7 @@ def navigation(emiten_name: str) -> List[Any]:
 def detail_emiten_table(emiten_name: str) -> List[Any]:
     detail_emiten = get_table_data(emiten_name, 'tb_detail_emiten')
     detail_emiten = [StockPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in detail_emiten]
+
     # Convert the 'date' field to datetime objects if they are strings
     for item in detail_emiten:
         if isinstance(item.date, str):
@@ -463,11 +464,61 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in detail_emiten)
     latest_date = max(item.date for item in detail_emiten)
+
+    # Check if the latest date is less than the current date
+    if latest_date.date() < datetime.now().date():
+        # Download the data from Yahoo Finance for the period between the latest date and the current date
+        try:
+            historical_data = yf.download(emiten_name, latest_date + timedelta(days=1), datetime.now().date())
+
+            if historical_data.empty:
+                print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
+            else:
+                historical_df = historical_data.reset_index()
+                print(historical_df.tail())
+
+                # id for fk in insert
+                stock_id = get_emiten_id(emiten_name)
+
+                # Save data to table 'tb_detail_emiten'
+                df_copy = historical_df.reset_index()
+                df_copy['id_emiten'] = stock_id
+                df_copy = df_copy.rename(columns={
+                    'Date': 'date',
+                    'Open': 'open',
+                    'High': 'high',
+                    'Low': 'low',
+                    'Close': 'close',
+                    'Adj Close': 'close_adj',
+                    'Volume': 'volume'
+                })
+                # Convert pandas Timestamp objects to datetime.datetime objects
+                df_copy['date'] = df_copy['date'].apply(lambda x: x.to_pydatetime().strftime('%Y-%m-%d'))
+
+                # Remove the 'kode_emiten' column
+                df_copy = df_copy.drop(columns=['index'])
+
+                insert_data_analyst("tb_detail_emiten", df_copy)
+
+                # Update detail_emiten with the new data
+                new_data = get_table_data(emiten_name, 'tb_detail_emiten')
+                detail_emiten.extend([StockPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in new_data if datetime.strptime(item['date'], '%Y-%m-%d') > latest_date])
+                # Update the latest date
+                latest_date = max(item.date for item in detail_emiten)
+
+        except Exception as e:
+            print(f"Failed to download data for {emiten_name}: {e}")
+
+    # Convert 'date' fields back to strings if needed before returning
+    for item in detail_emiten:
+        if isinstance(item.date, datetime):
+            item.date = item.date.strftime('%Y-%m-%d')
+
     return [
         c.Page(
             components=[
                 c.Heading(text=f'Detail Emiten', level=2),
-                c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
+                c.Heading(text=f'From {earliest_date.strftime('%Y-%m-%d')} To {latest_date.strftime('%Y-%m-%d')}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=detail_emiten,
@@ -485,6 +536,7 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
             ]
         ),
     ]
+
 
 @exception_handler
 @app.get("/api/ichimoku_data/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
