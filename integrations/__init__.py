@@ -23,4 +23,6 @@ all = ['exception_handler',
        'get_trend_arrays',
        'save_model_to_db',
        'load_model_from_db',
-       'get_model_id_by_emiten']
+       'get_model_id_by_emiten',
+       'save_model_to_directory', 
+       'load_model_from_directory',]

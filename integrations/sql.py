@@ -239,6 +239,45 @@ def load_model_from_db(model_id):
     except Exception as e:
         print("An error occurred while loading the model:", e)
         return None
+    
+@exception_handler
+def save_model_to_directory(model, id_emiten, name, algorithm, hyperparameters, metrics):
+    try:
+        # Define the directory and filename
+        directory = 'model'
+        filename = f'{name}.h5'
+
+        # Create the directory if it doesn't exist
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        # Save the model to the file
+        model.save(os.path.join(directory, filename))
+
+        print("Model saved to directory successfully.")
+    except Exception as e:
+        print("An error occurred while saving the model:", e)
+        
+@exception_handler
+def load_model_from_directory(model_name):
+    try:
+        # Define the directory and filename
+        directory = 'model'
+        filename = f'{model_name}.h5'
+
+        # Check if the file exists
+        if not os.path.exists(os.path.join(directory, filename)):
+            print(f"No model found with name: {model_name}")
+            return None
+
+        # Load the model from the file
+        model = load_model(os.path.join(directory, filename))
+
+        print("Model loaded from directory successfully.")
+        return model
+    except Exception as e:
+        print("An error occurred while loading the model:", e)
+        return None
 
 @exception_handler
 def get_model_id_by_emiten(id_emiten):

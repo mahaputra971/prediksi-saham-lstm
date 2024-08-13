@@ -4,5 +4,10 @@ venv/
 *:Zone.Identifier
 creds/
 ./picture
+*/picture
 ./ichimokuproject/image
+*/ichimokuproject/image
 __pycache__
+./model
+*/model
+**/*.png

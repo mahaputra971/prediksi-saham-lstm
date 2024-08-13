@@ -5,7 +5,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
 from datetime import datetime
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
-from app.sql import get_emiten_id, get_model_id_by_emiten, fetch_stock_data, load_model_from_db, get_table_data
+from app.sql import get_emiten_id, get_model_id_by_emiten, fetch_stock_data, load_model_from_db, get_table_data, load_model_from_directory
 import tempfile
 from datetime import datetime, timedelta
 from integrations.ic_project import ichimoku_sql, interpret_sen_status, get_senkou_span_status
@@ -28,10 +28,10 @@ def predict_with_loaded_model(stock, start_date, end_date):
         return None, None
 
     # Get model ID dynamically
-    model_id = get_model_id_by_emiten(stock_id)
-    if model_id is None:
-        print(f"Model ID for emiten {stock_id} not found.")
-        return None, None
+    # model_id = get_model_id_by_emiten(stock_id)
+    # if model_id is None:
+    #     print(f"Model ID for emiten {stock_id} not found.")
+    #     return None, None
 
     # Fetch stock data
     data = fetch_stock_data([stock], start_date, end_date)
@@ -45,9 +45,11 @@ def predict_with_loaded_model(stock, start_date, end_date):
         return None, None
 
     # Load the model from the database
-    model = load_model_from_db(model_id)
+    # model = load_model_from_db(model_id)
+    model_name = f'LSTM Model for {stock}'
+    model = load_model_from_directory(model_name)
     if model is None:
-        print(f"Model with ID {model_id} could not be loaded.")
+        print(f"Model with CODE {stock} could not be loaded.")
         return None, None
 
     # Prepare the data for prediction
@@ -149,14 +151,15 @@ def predict_future(stock, future_days):
         return None, None
 
     # Get model ID dynamically
-    model_id = get_model_id_by_emiten(stock_id)
-    if model_id is None:
-        print(f"Model ID for emiten {stock_id} not found.")
-        return None, None 
+    # model_id = get_model_id_by_emiten(stock_id)
+    # if model_id is None:
+    #     print(f"Model ID for emiten {stock_id} not found.")
+    #     return None, None 
     
-    model = load_model_from_db(model_id)
+    # model = load_model_from_db(model_id)
+    model = load_model_from_directory(f'LSTM Model for {stock}')
     if model is None:
-        print(f"Model with ID {model_id} could not be loaded.")
+        print(f"Model with ID {stock} could not be loaded.")
         return None, None
 
     future_predictions = model.predict(x_future)

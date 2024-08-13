@@ -23,7 +23,7 @@ from sqlalchemy.orm import sessionmaker
 import importlib
 import integrations
 importlib.reload(integrations)
-from integrations import ichimoku_project, ichimoku_sql, pembuktian_ichimoku, get_issuer, get_emiten_id, insert_data_analyst, save_model_to_db, load_model_from_db, get_model_id_by_emiten
+from integrations import ichimoku_project, ichimoku_sql, pembuktian_ichimoku, get_issuer, get_emiten_id, insert_data_analyst, save_model_to_db, load_model_from_db, get_model_id_by_emiten, save_model_to_directory, load_model_from_directory
 
 # Setup the SQLAlchemy engine and session
 # engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
@@ -230,7 +230,8 @@ def engine_main(stock):
         'rmse': rmse,
         'mape': mape
     }
-    save_model_to_db(model, stock_id, model_name, algorithm, hyperparameters, metrics)
+    # save_model_to_db(model, stock_id, model_name, algorithm, hyperparameters, metrics)
+    save_model_to_directory(model, stock_id, model_name, algorithm, hyperparameters, metrics)
 
     # Setting up for future predictions
     future_prediction_period = int(len(scaled_data) * 0.1)
@@ -364,19 +365,21 @@ def predict_with_loaded_model(stock, start_date, end_date):
         return
 
     # Get model ID dynamically
-    model_id = get_model_id_by_emiten(stock_id)
-    if model_id is None:
-        print(f"Model ID for emiten {stock_id} not found.")
-        return
+    # model_id = get_model_id_by_emiten(stock_id)
+    # if model_id is None:
+    #     print(f"Model ID for emiten {stock_id} not found.")
+    #     return
 
     # Fetch stock data
     data = fetch_stock_data([stock], start_date, end_date)
     company_df = data[stock]
 
     # Load the model from the database
-    model = load_model_from_db(model_id)
+    # model = load_model_from_db(model_id)
+    model_name = f'LSTM Model for {stock}'
+    model = load_model_from_directory(model_name)
     if model is None:
-        print(f"Model with ID {model_id} could not be loaded.")
+        print(f"Model with ID {stock} could not be loaded.")
         return
 
     # Prepare the data for prediction
