@@ -8,6 +8,5 @@ creds/
 ./ichimokuproject/image
 */ichimokuproject/image
 __pycache__
-./model
-*/model
+model
 **/*.png

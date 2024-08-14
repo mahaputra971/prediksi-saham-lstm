@@ -184,6 +184,103 @@ def predict_future(model, scaler, scaled_data, future_days, stock):
 end = datetime.now()
 start = datetime(end.year - 100, end.month, end.day)
 
+# Fungsi untuk memprediksi dengan model yang dimuat
+def predict_with_loaded_model(stock, start_date, end_date):
+    # Get emiten ID
+    stock_id = get_emiten_id(stock)
+    if stock_id is None:
+        print(f"Stock ID for {stock} not found.")
+        return
+
+    # Get model ID dynamically
+    # model_id = get_model_id_by_emiten(stock_id)
+    # if model_id is None:
+    #     print(f"Model ID for emiten {stock_id} not found.")
+    #     return
+
+    # Fetch stock data
+    data = fetch_stock_data([stock], start_date, end_date)
+    company_df = data[stock]
+
+    # Load the model from the database
+    # model = load_model_from_db(model_id)
+    model_name = f'LSTM Model for {stock}'
+    model = load_model_from_directory(model_name)
+    if model is None:
+        print(f"Model with ID {stock} could not be loaded.")
+        return
+
+    # Prepare the data for prediction
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaled_data = scaler.fit_transform(company_df['Close'].values.reshape(-1, 1))
+
+    # Create the test dataset
+    if len(company_df) < 60:
+        print(f"Not enough data to make predictions for {stock} from {start_date} to {end_date}.")
+        return
+
+    test_data = scaled_data[-(60 + len(company_df)):]
+
+    x_test = []
+    for i in range(60, len(test_data)):
+        x_test.append(test_data[i-60:i, 0])
+
+    x_test = np.array(x_test)
+    if x_test.shape[0] == 0 or x_test.shape[1] == 0:
+        print(f"Not enough data points after preprocessing for {stock} from {start_date} to {end_date}.")
+        return
+    x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+
+    # Make predictions
+    predictions = model.predict(x_test)
+    predictions = scaler.inverse_transform(predictions)
+
+    # Calculate evaluation metrics
+    actual = company_df['Close'].values[-len(predictions):]
+    mae = mean_absolute_error(actual, predictions)
+    mse = mean_squared_error(actual, predictions)
+    rmse = np.sqrt(mse)
+    mape = mean_absolute_percentage_error(actual, predictions)
+
+    # Plot the predictions
+    plt.figure(figsize=(16, 6))
+    plt.title(f'Predicted Close Price for {stock} from {start_date} to {end_date}')
+    plt.xlabel('Date', fontsize=18)
+    plt.ylabel('Close Price IDR', fontsize=18)
+    plt.plot(company_df.index[-len(predictions):], predictions, color='r', label='Predicted Price')
+    plt.plot(company_df.index[-len(predictions):], actual, color='b', label='Actual Price')
+    plt.legend()
+    # plt.savefig(f'picture/prediction/{stock}_{start_date}_to_{end_date}_predictions_{today}.png')
+    plt.savefig(f'picture/prediction/{stock}.png')
+    plt.close()
+
+    # Print predictions
+    print(f'Predicted prices for {stock} from {start_date} to {end_date}:')
+    for date, pred_price in zip(company_df.index[-len(predictions):], predictions):
+        print(f'{date}: {pred_price[0]}')
+
+    # Print evaluation metrics
+    print(f'\nMean Absolute Error (MAE): {mae}')
+    print(f'Mean Squared Error (MSE): {mse}')
+    print(f'Root Mean Squared Error (RMSE): {rmse}')
+    print(f'Mean Absolute Percentage Error (MAPE): {mape}%')
+
+    # Finding highest and lowest prices and their dates
+    highest_price = company_df['Close'].max()
+    lowest_price = company_df['Close'].min()
+    highest_date = company_df['Close'].idxmax()
+    lowest_date = company_df['Close'].idxmin()
+
+    print(f'\nHighest actual price: {highest_price} on {highest_date}')
+    print(f'Lowest actual price: {lowest_price} on {lowest_date}')
+
+    # Usage example
+    # stock = 'BELI.JK'  # Replace with the stock ticker
+    # start_date = '2023-03-01'  # Replace with the start date for the prediction
+    # end_date = '2023-07-31'  # Replace with the end date for the prediction
+
+    # predict_with_loaded_model(stock, start_date, end_date)
+
 # Process each stock separately
 def engine_main(stock):
     print(f"Processing stock: {stock}")
@@ -218,7 +315,7 @@ def engine_main(stock):
 
     # Training and evaluating the model
     model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid = train_and_evaluate_model(historical_df, stock)
-
+    
     # Menyimpan model ke database
     stock_id = get_emiten_id(stock)
     model_name = f'LSTM Model for {stock}'
@@ -347,6 +444,53 @@ def engine_main(stock):
     }
     insert_data_analyst('tb_accuracy_ichimoku_cloud', data_accuracy_ichimoku)
     
+    # Save data to table 'tb_prediction_lstm_data'
+    # Reset the index of the valid DataFrame to make the dates a column
+    valid_reset = valid.reset_index()
+    # Select and rename the columns to match the table schema   
+    data_to_insert = valid_reset[['Date', 'Close', 'Predictions']].rename(columns={
+        'Date': 'date',
+        'Close': 'validation_price',
+        'Predictions': 'prediction_price'
+    })
+    # Add the id_emiten column
+    data_to_insert['id_emiten'] = stock_id  
+    data_to_insert['date_render'] = datetime.now().strftime('%Y-%m-%d')
+    # Call the insert_data_analyst function 
+    insert_data_analyst('tb_prediction_lstm_data', data_to_insert)
+
+    # Get the price predictions
+    price_prediction_1_day = valid_reset['Predictions'][0] if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) else None
+    price_prediction_1_week = valid_reset['Predictions'][6] if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][6]) else None
+    price_prediction_1_month = valid_reset['Predictions'][29] if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][29]) else None
+
+    # Get the high price predictions
+    high_price_prediction_1_day = price_prediction_1_day
+    high_price_prediction_1_week = valid_reset['Predictions'][0:7].max() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][0:7].max()) else None
+    high_price_prediction_1_month = valid_reset['Predictions'][0:30].max() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][0:30].max()) else None
+
+    # Get the accuracy of the price predictions
+    accuracy_price_prediction_1_day = (valid_reset['Predictions'][0] / valid_reset['Close'][0]) * 100 if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) and pd.notnull(valid_reset['Close'][0]) else None
+    # Get the mean accuracy of the price predictions for a week
+    accuracy_price_prediction_1_week = ((valid_reset['Predictions'][1:7] / valid_reset['Close'][1:7]) * 100).mean() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][1:7]).any() and pd.notnull(valid_reset['Close'][1:7]).any() else None
+    # Get the mean accuracy of the price predictions for a month
+    accuracy_price_prediction_1_month = ((valid_reset['Predictions'][1:30] / valid_reset['Close'][1:30]) * 100).mean() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][1:30]).any() and pd.notnull(valid_reset['Close'][1:30]).any() else None
+    
+    print("Price predictions:")
+    print("1 day: ", price_prediction_1_day)
+    print("1 week: ", price_prediction_1_week)
+    print("1 month: ", price_prediction_1_month)
+
+    print("\nHigh price predictions:")
+    print("1 day: ", high_price_prediction_1_day)
+    print("1 week: ", high_price_prediction_1_week)
+    print("1 month: ", high_price_prediction_1_month)
+
+    print("\nAccuracy of price predictions:")
+    print("1 day: ", accuracy_price_prediction_1_day)
+    print("1 week: ", accuracy_price_prediction_1_week)
+    print("1 month: ", accuracy_price_prediction_1_month)
+        
     # Set the 'status' column in 'tb_emiten' to '1' for the given stock
     try:
         update_query = text("UPDATE tb_emiten SET status = :status WHERE kode_emiten = :stock")
@@ -355,102 +499,5 @@ def engine_main(stock):
         print("Commit success")
     except Exception as e:
         print(f"Commit error: {str(e)}")
+        
 
-# Fungsi untuk memprediksi dengan model yang dimuat
-def predict_with_loaded_model(stock, start_date, end_date):
-    # Get emiten ID
-    stock_id = get_emiten_id(stock)
-    if stock_id is None:
-        print(f"Stock ID for {stock} not found.")
-        return
-
-    # Get model ID dynamically
-    # model_id = get_model_id_by_emiten(stock_id)
-    # if model_id is None:
-    #     print(f"Model ID for emiten {stock_id} not found.")
-    #     return
-
-    # Fetch stock data
-    data = fetch_stock_data([stock], start_date, end_date)
-    company_df = data[stock]
-
-    # Load the model from the database
-    # model = load_model_from_db(model_id)
-    model_name = f'LSTM Model for {stock}'
-    model = load_model_from_directory(model_name)
-    if model is None:
-        print(f"Model with ID {stock} could not be loaded.")
-        return
-
-    # Prepare the data for prediction
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    scaled_data = scaler.fit_transform(company_df['Close'].values.reshape(-1, 1))
-
-    # Create the test dataset
-    if len(company_df) < 60:
-        print(f"Not enough data to make predictions for {stock} from {start_date} to {end_date}.")
-        return
-
-    test_data = scaled_data[-(60 + len(company_df)):]
-
-    x_test = []
-    for i in range(60, len(test_data)):
-        x_test.append(test_data[i-60:i, 0])
-
-    x_test = np.array(x_test)
-    if x_test.shape[0] == 0 or x_test.shape[1] == 0:
-        print(f"Not enough data points after preprocessing for {stock} from {start_date} to {end_date}.")
-        return
-    x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
-
-    # Make predictions
-    predictions = model.predict(x_test)
-    predictions = scaler.inverse_transform(predictions)
-
-    # Calculate evaluation metrics
-    actual = company_df['Close'].values[-len(predictions):]
-    mae = mean_absolute_error(actual, predictions)
-    mse = mean_squared_error(actual, predictions)
-    rmse = np.sqrt(mse)
-    mape = mean_absolute_percentage_error(actual, predictions)
-
-    # Plot the predictions
-    plt.figure(figsize=(16, 6))
-    plt.title(f'Predicted Close Price for {stock} from {start_date} to {end_date}')
-    plt.xlabel('Date', fontsize=18)
-    plt.ylabel('Close Price IDR', fontsize=18)
-    plt.plot(company_df.index[-len(predictions):], predictions, color='r', label='Predicted Price')
-    plt.plot(company_df.index[-len(predictions):], actual, color='b', label='Actual Price')
-    plt.legend()
-    # plt.savefig(f'picture/prediction/{stock}_{start_date}_to_{end_date}_predictions_{today}.png')
-    plt.savefig(f'picture/prediction/{stock}.png')
-    plt.close()
-
-    # Print predictions
-    print(f'Predicted prices for {stock} from {start_date} to {end_date}:')
-    for date, pred_price in zip(company_df.index[-len(predictions):], predictions):
-        print(f'{date}: {pred_price[0]}')
-
-    # Print evaluation metrics
-    print(f'\nMean Absolute Error (MAE): {mae}')
-    print(f'Mean Squared Error (MSE): {mse}')
-    print(f'Root Mean Squared Error (RMSE): {rmse}')
-    print(f'Mean Absolute Percentage Error (MAPE): {mape}%')
-
-    # Finding highest and lowest prices and their dates
-    highest_price = company_df['Close'].max()
-    lowest_price = company_df['Close'].min()
-    highest_date = company_df['Close'].idxmax()
-    lowest_date = company_df['Close'].idxmin()
-
-    print(f'\nHighest actual price: {highest_price} on {highest_date}')
-    print(f'Lowest actual price: {lowest_price} on {lowest_date}')
-    
-
-
-# Usage example
-# stock = 'BELI.JK'  # Replace with the stock ticker
-# start_date = '2023-03-01'  # Replace with the start date for the prediction
-# end_date = '2023-07-31'  # Replace with the end date for the prediction
-
-# predict_with_loaded_model(stock, start_date, end_date)

@@ -25,7 +25,6 @@ import json
 from datetime import datetime, timedelta
 import yfinance as yf
 
-
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.mount("/static2", StaticFiles(directory="picture"), name="static")
