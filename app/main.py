@@ -9,7 +9,7 @@ from fastui import FastUI, AnyComponent, prebuilt_html, components as c
 from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent
 from fastapi.staticfiles import StaticFiles
-from app.sql import get_table_data, get_emiten_status, get_emiten_id, insert_data_analyst
+from app.sql import get_table_data, get_emiten_status, get_emiten_id, insert_data_analyst, fetch_emiten_recommendation
 from app.predict import predict_with_loaded_model, predict_future, ichimoku_predict, train_and_evaluate_model
 from app.exception import exception_handler
 from app.engine import engine_main
@@ -196,7 +196,10 @@ class LSTMAccuracy(BaseModel):
     half_year: float
     year: float
     date: date
-
+    
+class Recommendation(BaseModel): 
+    kode_emiten: str
+    date: date
 
 @exception_handler
 @app.get("/")
@@ -216,6 +219,11 @@ async def home() -> List[AnyComponent]:
             components=[
                 c.Heading(text='Analisa Technical LSTM dan Ichimoku Stock', level=2),
                 c.ModelForm(model=EmitenForm, display_mode='page', submit_url='/api/submit_emiten_form'),
+            ]
+        ),
+        c.Page(
+            components=[
+                c.Button(text='Recommendation Stock', on_click=GoToEvent(url=f'/recommendation'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
@@ -1007,6 +1015,38 @@ def lstm_accuracy_table(emiten_name: str) -> List[Any]:
                         DisplayLookup(field='half_year'),
                         DisplayLookup(field='year'),
                         DisplayLookup(field='date', mode=DisplayMode.date),
+                    ],
+                ),
+            ]
+        ),
+    ]
+    
+@exception_handler
+@app.get("/api/recommendation", response_model=FastUI, response_model_exclude_none=True)
+def emiten_recommendation():
+    data = fetch_emiten_recommendation()
+    if not data:  # Check if data list is empty
+        return [
+            c.Page(
+                components=[
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
+                    c.Heading(text='Emiten Recommendation', level=2),
+                    c.Text(text='No recommendations available.'),
+                ]
+            ),
+        ]
+
+    data = [{'kode_emiten': kode} for kode in data]  # Convert to list of dictionaries for the Table component
+
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Emiten Recommendation', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/')),
+                c.Table(
+                    data=data,
+                    columns=[
+                        DisplayLookup(field='kode_emiten'),
                     ],
                 ),
             ]
