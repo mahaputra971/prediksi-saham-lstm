@@ -459,37 +459,59 @@ def engine_main(stock):
     # Call the insert_data_analyst function 
     insert_data_analyst('tb_prediction_lstm_data', data_to_insert)
 
-    # Get the price predictions
-    price_prediction_1_day = valid_reset['Predictions'][0] if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) else None
-    price_prediction_1_week = valid_reset['Predictions'][6] if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][6]) else None
-    price_prediction_1_month = valid_reset['Predictions'][29] if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][29]) else None
+    # # Get the price predictions
+    # price_prediction_1_day = valid_reset['Predictions'][0] if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) else None
+    # price_prediction_1_week = valid_reset['Predictions'][6] if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][6]) else None
+    # price_prediction_1_month = valid_reset['Predictions'][29] if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][29]) else None
 
-    # Get the high price predictions
-    high_price_prediction_1_day = price_prediction_1_day
-    high_price_prediction_1_week = valid_reset['Predictions'][0:7].max() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][0:7].max()) else None
-    high_price_prediction_1_month = valid_reset['Predictions'][0:30].max() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][0:30].max()) else None
+    # # Get the high price predictions
+    # high_price_prediction_1_day = price_prediction_1_day
+    # high_price_prediction_1_week = valid_reset['Predictions'][0:7].max() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][0:7].max()) else None
+    # high_price_prediction_1_month = valid_reset['Predictions'][0:30].max() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][0:30].max()) else None
 
-    # Get the accuracy of the price predictions
-    accuracy_price_prediction_1_day = (valid_reset['Predictions'][0] / valid_reset['Close'][0]) * 100 if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) and pd.notnull(valid_reset['Close'][0]) else None
-    # Get the mean accuracy of the price predictions for a week
-    accuracy_price_prediction_1_week = ((valid_reset['Predictions'][1:7] / valid_reset['Close'][1:7]) * 100).mean() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][1:7]).any() and pd.notnull(valid_reset['Close'][1:7]).any() else None
-    # Get the mean accuracy of the price predictions for a month
-    accuracy_price_prediction_1_month = ((valid_reset['Predictions'][1:30] / valid_reset['Close'][1:30]) * 100).mean() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][1:30]).any() and pd.notnull(valid_reset['Close'][1:30]).any() else None
+    # Calculate the accuracy of the price predictions
+    accuracy_price_prediction_1_day = 100 - abs((valid_reset['Predictions'][0] - valid_reset['Close'][0]) / valid_reset['Close'][0] * 100) if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) and pd.notnull(valid_reset['Close'][0]) else None
+    # Calculate the mean accuracy of the price predictions for a week
+    accuracy_price_prediction_1_week = 100 - abs((valid_reset['Predictions'][1:7] - valid_reset['Close'][1:7]) / valid_reset['Close'][1:7] * 100).mean() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][1:7]).any() and pd.notnull(valid_reset['Close'][1:7]).any() else None
+    # Calculate the mean accuracy of the price predictions for a month
+    accuracy_price_prediction_1_month = 100 - abs((valid_reset['Predictions'][1:30] - valid_reset['Close'][1:30]) / valid_reset['Close'][1:30] * 100).mean() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][1:30]).any() and pd.notnull(valid_reset['Close'][1:30]).any() else None  
+    # Calculate the mean accuracy of the price predictions for a quarter
+    accuracy_price_prediction_1_quarter = 100 - abs((valid_reset['Predictions'][1:90] - valid_reset['Close'][1:90]) / valid_reset['Close'][1:90] * 100).mean() if len(valid_reset['Predictions']) > 89 and pd.notnull(valid_reset['Predictions'][1:90]).any() and pd.notnull(valid_reset['Close'][1:90]).any() else None
+    # Calculate the mean accuracy of the price predictions for a half year
+    accuracy_price_prediction_1_half_year = 100 - abs((valid_reset['Predictions'][1:180] - valid_reset['Close'][1:180]) / valid_reset['Close'][1:180] * 100).mean() if len(valid_reset['Predictions']) > 179 and pd.notnull(valid_reset['Predictions'][1:180]).any() and pd.notnull(valid_reset['Close'][1:180]).any() else None  
+    # Calculate the mean accuracy of the price predictions for a year
+    accuracy_price_prediction_1_year = 100 - abs((valid_reset['Predictions'][1:360] - valid_reset['Close'][1:360]) / valid_reset['Close'][1:360] * 100).mean() if len(valid_reset['Predictions']) > 359 and pd.notnull(valid_reset['Predictions'][1:360]).any() and pd.notnull(valid_reset['Close'][1:360]).any() else None  
     
-    print("Price predictions:")
-    print("1 day: ", price_prediction_1_day)
-    print("1 week: ", price_prediction_1_week)
-    print("1 month: ", price_prediction_1_month)
+    data_accuracy_lstm = {
+        'id_emiten': stock_id,
+        'day': accuracy_price_prediction_1_day,
+        'week': accuracy_price_prediction_1_week,
+        'month': accuracy_price_prediction_1_month,
+        'quarter': accuracy_price_prediction_1_quarter,
+        'half_year': accuracy_price_prediction_1_half_year,
+        'year': accuracy_price_prediction_1_year,
+        'date': date_save
+    }
+    insert_data_analyst('tb_accuracy_lstm', data_accuracy_lstm)
+    
+    # print("Price predictions:")
+    # print("1 day: ", price_prediction_1_day)
+    # print("1 week: ", price_prediction_1_week)
+    # print("1 month: ", price_prediction_1_month)
 
-    print("\nHigh price predictions:")
-    print("1 day: ", high_price_prediction_1_day)
-    print("1 week: ", high_price_prediction_1_week)
-    print("1 month: ", high_price_prediction_1_month)
+    # print("\nHigh price predictions:")
+    # print("1 day: ", high_price_prediction_1_day)
+    # print("1 week: ", high_price_prediction_1_week)
+    # print("1 month: ", high_price_prediction_1_month)
 
     print("\nAccuracy of price predictions:")
     print("1 day: ", accuracy_price_prediction_1_day)
     print("1 week: ", accuracy_price_prediction_1_week)
     print("1 month: ", accuracy_price_prediction_1_month)
+    print("1 quarter: ", accuracy_price_prediction_1_quarter)
+    print("1 half year: ", accuracy_price_prediction_1_half_year)
+    print("1 year: ", accuracy_price_prediction_1_year)
+    
         
     # Set the 'status' column in 'tb_emiten' to '1' for the given stock
     try:

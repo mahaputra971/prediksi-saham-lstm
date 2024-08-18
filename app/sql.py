@@ -319,3 +319,23 @@ def fetch_stock_data(stock_list, start, end):
     except Exception as e:
         print(f"Error fetching stock data: {e}")
         return None
+    
+@exception_handler
+def fetch_emiten_kode():
+    try:
+        with engine.connect() as connection:
+            query = text("""
+                SELECT tb_emiten.kode_emiten
+                FROM tb_emiten
+                JOIN tb_lstm ON tb_emiten.id_emiten = tb_lstm.id_emiten
+                JOIN tb_ichimoku_status ON tb_emiten.id_emiten = tb_ichimoku_status.id_emiten
+                WHERE tb_lstm.accuracy > 90
+                AND tb_ichimoku_status.sen_status IN ('Pasar Bullish', 'Pasar Bullish Konsolidasi, Potensi Kelanjutan Kenaikan')
+                AND tb_ichimoku_status.span_status IN ('Senkou_Span Uptrend', 'Senkou_Span Will Pump', 'Senkou_Span Uptrend and Will Bounce Up')
+            """)
+            result = connection.execute(query)
+            data = [row[0] for row in result]
+            return data
+    except Exception as e:
+        print("An error occurred:", e)
+        return None
