@@ -86,7 +86,7 @@ def get_issuer():
     data_name = []
     try:
         with engine.connect() as connection:
-            query = text("SELECT kode_emiten, nama_emiten FROM tb_emiten limit 1")
+            query = text("SELECT kode_emiten, nama_emiten FROM tb_emiten WHERE status = 0")
             result = connection.execute(query)
             for row in result:
                 data_code.append(row[0])
