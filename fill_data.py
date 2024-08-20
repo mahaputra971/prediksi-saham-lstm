@@ -1,3 +1,4 @@
+from app.sql import get_issuer 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,7 +24,7 @@ from sqlalchemy.orm import sessionmaker
 import importlib
 import integrations
 importlib.reload(integrations)
-from integrations import ichimoku_project, ichimoku_sql, pembuktian_ichimoku, get_issuer, get_emiten_id, insert_data_analyst, save_model_to_db, load_model_from_db, get_model_id_by_emiten, save_model_to_directory, load_model_from_directory
+from integrations import ichimoku_project, ichimoku_sql, pembuktian_ichimoku, get_emiten_id, insert_data_analyst, save_model_to_db, load_model_from_db, get_model_id_by_emiten, save_model_to_directory, load_model_from_directory
 
 # Setup the SQLAlchemy engine and session
 # engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
@@ -41,10 +42,13 @@ Session = sessionmaker(bind=engine)
 session = Session()
 today = datetime.now().strftime("%Y-%m-%d")
 
-# Stock data
-# stock_data = ['TLKM.JK', 'BBRI.JK', 'ASII.JK', 'BMRI.JK', 'KLBF.JK', 'UNVR.JK', 'MTDL.JK', 'INDF.JK', 'ACES.JK']
-# company_name = stock_data 
-# stock_nama_data = company_name
+data_kode, data_nama = get_issuer()
+
+
+for i in range(len(data_kode)):
+    print(f"Kode: {data_kode[i]}, Nama: {data_nama[i]}")
+
+print(f"panjang kode : {len(data_kode)}, panjang Nama: {len(data_nama)}")
 
 def fetch_stock_data(stock_list, start, end):
     data = {stock: yf.download(stock, start, end) for stock in stock_list}
@@ -282,7 +286,7 @@ def predict_with_loaded_model(stock, start_date, end_date):
     # predict_with_loaded_model(stock, start_date, end_date)
 
 # Process each stock separately
-def engine_main(stock):
+def engine_main(stock, stock_name):
     print(f"Processing stock: {stock}")
     
     # Fetch stock data
@@ -299,10 +303,10 @@ def engine_main(stock):
     print(company_df.info())
 
     # Plotting historical adjusted closing price
-    plot_stock_data(company_df, 'Adj Close', 'Adj Close', None, f'Closing Price of {stock}', 'adj_closing_price', stock)
+    plot_stock_data(company_df, 'Adj Close', 'Adj Close', None, f'Closing Price of {stock_name}', 'adj_closing_price', stock)
 
     # Plotting sales volume
-    plot_stock_data(company_df, 'Volume', 'Volume', None, f'Sales Volume of {stock}', 'sales_volume', stock)
+    plot_stock_data(company_df, 'Volume', 'Volume', None, f'Sales Volume of {stock_name}', 'sales_volume', stock)
 
     # Getting historical data for the past 100 years
     historical_start = datetime.now() - relativedelta(years=100)
@@ -311,7 +315,7 @@ def engine_main(stock):
     print(historical_df.tail())
 
     # Plotting historical closing price
-    plot_stock_data(historical_df, 'Close', 'Date', f'Close Price IDR {stock}', 'Close Price History', 'close_price_history', stock)
+    plot_stock_data(historical_df, 'Close', 'Date', f'Close Price IDR {stock_name}', 'Close Price History', 'close_price_history', stock)
 
     # Training and evaluating the model
     model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid = train_and_evaluate_model(historical_df, stock)
@@ -521,5 +525,7 @@ def engine_main(stock):
         print("Commit success")
     except Exception as e:
         print(f"Commit error: {str(e)}")
-        
 
+for kode, nama in zip(data_kode, data_nama):
+    engine_main(kode, nama)
+    print(f"Stock {kode} ({nama})has been processed.\n")

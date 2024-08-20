@@ -9,7 +9,7 @@ from fastui import FastUI, AnyComponent, prebuilt_html, components as c
 from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent
 from fastapi.staticfiles import StaticFiles
-from app.sql import get_table_data, get_emiten_status, get_emiten_id, insert_data_analyst
+from app.sql import get_table_data, get_emiten_status, get_emiten_id, insert_data_analyst, fetch_emiten_recommendation
 from app.predict import predict_with_loaded_model, predict_future, ichimoku_predict, train_and_evaluate_model
 from app.exception import exception_handler
 from app.engine import engine_main
@@ -186,7 +186,20 @@ class PredicValid(BaseModel):
     Predictions: float
     Close: float
     Date: date
-
+    
+class LSTMAccuracy(BaseModel): 
+    kode_emiten: str 
+    day: float 
+    week: float 
+    month: float
+    quarter: float
+    half_year: float
+    year: float
+    date: date
+    
+class Recommendation(BaseModel): 
+    kode_emiten: str
+    date: date
 
 @exception_handler
 @app.get("/")
@@ -206,6 +219,11 @@ async def home() -> List[AnyComponent]:
             components=[
                 c.Heading(text='Analisa Technical LSTM dan Ichimoku Stock', level=2),
                 c.ModelForm(model=EmitenForm, display_mode='page', submit_url='/api/submit_emiten_form'),
+            ]
+        ),
+        c.Page(
+            components=[
+                c.Button(text='Recommendation Stock', on_click=GoToEvent(url=f'/recommendation'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
@@ -230,9 +248,10 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                         c.Heading(text='Result Analyst Data', level=4),
                         c.Heading(text='LSTM', level=6),
                         c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                        c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='LSTM Detail', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                         c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                         c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                     ]
                 ),
                 c.Div(
@@ -288,9 +307,10 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                     c.Heading(text='Result Analyst Data', level=4),
                     c.Heading(text='LSTM', level=6),
                     c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                    c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='LSTM Detail', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                     c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                     c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 ]
             ),
             c.Div(
@@ -425,9 +445,10 @@ def navigation(emiten_name: str) -> List[Any]:
                 c.Heading(text='Result Analyst Data', level=4),
                 c.Heading(text='LSTM', level=6),
                 c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
-                c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='LSTM Detail', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
         ),  
         c.Page(
@@ -963,6 +984,98 @@ async def lstm_accuracy_result(emiten_name: str, start_date: date = Form(...), e
                 )
             ]
         ), 
+    ]
+    
+@exception_handler
+@app.get("/api/lstm_accuracy_data/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def lstm_accuracy_table(emiten_name: str) -> List[Any]:
+    accuracy_lstm = get_table_data(emiten_name, 'tb_accuracy_lstm')
+    accuracy_lstm = [LSTMAccuracy(**{**{k: v if v is not None else 0.0 for k, v in item.items()}, 'kode_emiten': emiten_name}) for item in accuracy_lstm]
+    for item in accuracy_lstm:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in accuracy_lstm)
+    latest_date = max(item.date for item in accuracy_lstm)
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Ichimoku Accuracy', level=2),
+                c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Table(
+                    data=accuracy_lstm,
+                    columns=[
+                        DisplayLookup(field='kode_emiten'),
+                        DisplayLookup(field='day'),
+                        DisplayLookup(field='week'),
+                        DisplayLookup(field='month'),
+                        DisplayLookup(field='quarter'),
+                        DisplayLookup(field='half_year'),
+                        DisplayLookup(field='year'),
+                        DisplayLookup(field='date', mode=DisplayMode.date),
+                    ],
+                ),
+            ]
+        ),
+    ]
+    
+@exception_handler
+@app.get("/api/recommendation", response_model=FastUI, response_model_exclude_none=True)
+def emiten_recommendation():
+    data_1, data_2, data_3 = fetch_emiten_recommendation()
+
+    if len(data_1) == 0 : 
+        data_1 = ['Kosong']
+    if len(data_2) == 0 : 
+        data_2 = ['Kosong']
+    if len(data_3) == 0 : 
+        data_3 = ['Kosong']
+    elif not data_1 and not data_2 and not data_3 :  # Check if data list is empty
+        return [
+            c.Page(
+                components=[
+                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
+                    c.Heading(text='Emiten Recommendation', level=2),
+                    c.Text(text='No recommendations available.'),
+                ]
+            ),
+        ]
+
+    # Convert to list of dictionaries for the Table component
+    data_1 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_1]
+    data_2 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_2]
+    data_3 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_3]
+
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Emiten Recommendation', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/')),
+                c.Heading(text='Grade 1', level=6),
+                c.Table(
+                    data=data_1,
+                    columns=[
+                        DisplayLookup(field='kode_emiten'),
+                    ],
+                ),
+                c.Heading(text='Recommendation LSTM', level=6),
+                c.Table(
+                    data=data_2,
+                    columns=[
+                        DisplayLookup(field='kode_emiten'),
+                    ],
+                ),
+                c.Heading(text='Recommendation IChimoku Cloud', level=6),
+                c.Table(
+                    data=data_3,
+                    columns=[
+                        DisplayLookup(field='kode_emiten'),
+                    ],
+                ),
+            ]
+        ),
     ]
     
 @app.get('/{path:path}')

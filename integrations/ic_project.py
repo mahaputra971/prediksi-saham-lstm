@@ -584,7 +584,7 @@ from sqlalchemy import create_engine, text
 def get_trend_arrays(stock):
     id_stock = get_emiten_id(stock)
     # Create database connection
-    engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
+    # engine = engine
 
     # Fetch the earliest date from tb_ichimoku_cloud for the given stock
     with engine.connect() as conn:
@@ -729,12 +729,22 @@ def validation_close_price(current_date, conn, status_ichimoku, array_1_waktu, c
     
     return array_1_waktu
 
+from dotenv import load_dotenv
+import os
+from sqlalchemy.orm import sessionmaker
+
+load_dotenv()  # take environment variables
+
+# Create the engine
+engine = create_engine(os.getenv('MYSQL_STRING'))
+Session = sessionmaker(bind=engine)
+session = Session()
+
 def pembuktian_ichimoku(stock, type):
     id_stock = get_emiten_id(stock)
-    print(f"7: {id_stock}")
+    print(f"7: {id_stock} def pembuktian_ichimoku - ic_project.py")
     
     # Create database connection
-    engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/lstm')
 
     # Fetch the earliest date from tb_ichimoku_cloud for the given stock
     with engine.connect() as conn:

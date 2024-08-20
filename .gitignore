@@ -10,3 +10,5 @@ creds/
 __pycache__
 model
 **/*.png
+*.env
+.env
