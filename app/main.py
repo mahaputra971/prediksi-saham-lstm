@@ -1052,7 +1052,7 @@ def emiten_recommendation():
         c.Page(
             components=[
                 c.Heading(text='Emiten Recommendation', level=2),
-                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/')),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
                 c.Heading(text='Grade 1', level=6),
                 c.Table(
                     data=data_1,
