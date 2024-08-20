@@ -734,7 +734,7 @@ def pembuktian_ichimoku(stock, type):
     print(f"7: {id_stock}")
     
     # Create database connection
-    engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
+    engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/lstm')
 
     # Fetch the earliest date from tb_ichimoku_cloud for the given stock
     with engine.connect() as conn:
