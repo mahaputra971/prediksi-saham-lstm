@@ -994,10 +994,13 @@ def lstm_accuracy_table(emiten_name: str) -> List[Any]:
     for item in accuracy_lstm:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+            print(f"tanggal : {item.date}")
 
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in accuracy_lstm)
+    print(f"1000: {earliest_date}")
     latest_date = max(item.date for item in accuracy_lstm)
+    print(f"1002: {latest_date}")
     return [
         c.Page(
             components=[
@@ -1074,6 +1077,19 @@ def emiten_recommendation():
                         DisplayLookup(field='kode_emiten'),
                     ],
                 ),
+            ]
+        ),
+    ]
+    
+@exception_handler
+@app.get("/api/testing/{angka}", response_model=FastUI, response_model_exclude_none=True)
+def testng(angka: int):  # Define angka as a parameter
+    angka = angka + angka
+    return [
+        c.Page(
+            components=[
+                c.Heading(text=f'angka sekarang : {angka}', level=2),
+                c.Button(text='tambah angka', on_click=GoToEvent(url=f'/testing/{angka}'), named_style='secondary', class_name='ms-2'),
             ]
         ),
     ]
