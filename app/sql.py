@@ -9,7 +9,7 @@ import io
 import sqlite3
 from PIL import Image
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from tensorflow.keras.models import load_model, save_model
 import tempfile
 from app.exception import exception_handler

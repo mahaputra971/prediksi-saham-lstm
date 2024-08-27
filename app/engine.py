@@ -59,7 +59,7 @@ def plot_stock_data(company, column, xlabel, ylabel, title, folder_name, stock):
     plt.tight_layout()
     plt.savefig(f'picture/{folder_name}/{stock}.png')
     plt.close()
-
+    
 def train_and_evaluate_model(df, stock_name):
     data = df.filter(['Close'])
     dataset = data.values
@@ -101,6 +101,7 @@ def train_and_evaluate_model(df, stock_name):
 
     train = data[:training_data_len]
     valid = data[training_data_len:]
+    valid = valid.copy()  # Avoiding the SettingWithCopyWarning
     valid.loc[:, 'Predictions'] = predictions
 
     plt.figure(figsize=(16, 6))
@@ -110,11 +111,17 @@ def train_and_evaluate_model(df, stock_name):
     plt.plot(train['Close'])
     plt.plot(valid[['Close', 'Predictions']])
     plt.legend(['Train', 'Val', 'Predictions'], loc='lower right')
-    # f'picture/{folder_name}/{stock}.png'
     plt.savefig(f'picture/accuracy/{stock_name}.png')
     plt.close()
 
     print(valid)
+    valid_reset = valid.reset_index()
+
+    if len(valid_reset['Predictions']) > 0 and valid_reset['Predictions'].notnull().all() and valid_reset['Close'].notnull().all():
+        accuracy_series = 100 - abs((valid_reset['Predictions'] - valid_reset['Close']) / valid_reset['Close'] * 100)
+        accuracy = accuracy_series.mean()  # Mengambil rata-rata dari seluruh nilai accuracy
+    else:
+        accuracy = None
 
     mae = mean_absolute_error(valid['Close'], valid['Predictions'])
     print(f"Mean Absolute Error (MAE): {mae}")
@@ -137,7 +144,7 @@ def train_and_evaluate_model(df, stock_name):
     print(f"Highest prediction: {highest_prediction} on {highest_date}")
     print(f"Lowest prediction: {lowest_prediction} on {lowest_date}")
 
-    return model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid
+    return model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy
 
 def mean_absolute_percentage_error(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
@@ -314,7 +321,7 @@ def engine_main(stock):
     plot_stock_data(historical_df, 'Close', 'Date', f'Close Price IDR {stock}', 'Close Price History', 'close_price_history', stock)
 
     # Training and evaluating the model
-    model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid = train_and_evaluate_model(historical_df, stock)
+    model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy = train_and_evaluate_model(historical_df, stock)
     
     # Menyimpan model ke database
     stock_id = get_emiten_id(stock)
@@ -325,8 +332,9 @@ def engine_main(stock):
         'mae': mae,
         'mse': mse,
         'rmse': rmse,
-        'mape': mape
+        'mape': mape,
     }
+    print(metrics)
     # save_model_to_db(model, stock_id, model_name, algorithm, hyperparameters, metrics)
     save_model_to_directory(model, stock_id, model_name, algorithm, hyperparameters, metrics)
 
@@ -363,6 +371,7 @@ def engine_main(stock):
         'MAPE': mape,
         'MAE': mae,
         'MSE': mse,
+        'accuracy' : accuracy,
         'date': datetime.now().strftime("%Y-%m-%d")
     }
     insert_data_analyst("tb_lstm", data_lstm)
