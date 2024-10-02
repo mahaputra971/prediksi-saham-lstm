@@ -1,6 +1,7 @@
 # app/main.py
 
 from pydantic import BaseModel, Field, field_validator, ValidationError, ValidationInfo
+import pandas as pd
 from typing import List, Any
 from datetime import date
 from fastapi import FastAPI, Form
@@ -12,13 +13,13 @@ from fastapi.staticfiles import StaticFiles
 from app.sql import get_table_data, get_emiten_status, get_emiten_id, insert_data_analyst, fetch_emiten_recommendation
 from app.predict import predict_with_loaded_model, predict_future, ichimoku_predict, train_and_evaluate_model
 from app.exception import exception_handler
-from app.engine import engine_main
+from app.engine import engine_main, train_and_evaluate_model, predict_future
 
-from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi import FastAPI, HTTPException, Request, Form   
 from fastapi.responses import FileResponse
 from fastui.events import BackEvent, PageEvent
 from fastui.forms import fastui_form
-from integrations import exception_handler, blob_to_data_url
+from integrations import exception_handler, blob_to_data_url, ichimoku_sql, pembuktian_ichimoku
 import os
 from fastapi.staticfiles import StaticFiles
 import json
@@ -145,6 +146,7 @@ class ErrorMetricsResponse(BaseModel):
     MAPE: float
     MAE: float
     MSE: float
+    accuracy: float
     date: str
 
 class ChartResponse(BaseModel):
@@ -471,8 +473,8 @@ def navigation(emiten_name: str) -> List[Any]:
     ]
 
 @exception_handler
-@app.get("/api/detail_emiten/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
-def detail_emiten_table(emiten_name: str) -> List[Any]:
+@app.get("/api/update_detail_emiten/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def update_detail_emiten(emiten_name: str) -> List[Any]:
     detail_emiten = get_table_data(emiten_name, 'tb_detail_emiten')
     detail_emiten = [StockPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in detail_emiten]
 
@@ -481,11 +483,9 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
 
-    # Fetch the earliest and latest date
-    earliest_date = min(item.date for item in detail_emiten)
+    # Fetch the latest date
     latest_date = max(item.date for item in detail_emiten)
-
-    # Check if the latest date is less than the current date
+    
     if latest_date.date() < datetime.now().date():
         # Download the data from Yahoo Finance for the period between the latest date and the current date
         try:
@@ -529,6 +529,26 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
         except Exception as e:
             print(f"Failed to download data for {emiten_name}: {e}")
 
+    return RedirectResponse(url=f"/api/detail_emiten/{emiten_name}")
+
+@exception_handler
+@app.get("/api/detail_emiten/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def detail_emiten_table(emiten_name: str) -> List[Any]:
+    detail_emiten = get_table_data(emiten_name, 'tb_detail_emiten')
+    detail_emiten = [StockPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in detail_emiten]
+
+    # Convert the 'date' field to datetime objects if they are strings
+    for item in detail_emiten:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in detail_emiten)
+    latest_date = max(item.date for item in detail_emiten)
+
+    # Run This if i want to click update button
+    # update_detail_emiten(latest_date, emiten_name, detail_emiten)
+
     # Convert 'date' fields back to strings if needed before returning
     for item in detail_emiten:
         if isinstance(item.date, datetime):
@@ -540,6 +560,7 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
                 c.Heading(text=f'Detail Emiten', level=2),
                 c.Heading(text=f'From {earliest_date.strftime('%Y-%m-%d')} To {latest_date.strftime('%Y-%m-%d')}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Table(
                     data=detail_emiten,
                     columns=[
@@ -556,7 +577,6 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
             ]
         ),
     ]
-
 
 @exception_handler
 @app.get("/api/ichimoku_data/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
@@ -576,6 +596,7 @@ def ichimoku_data_table(emiten_name: str) -> List[Any]:
                 c.Heading(text='Ichimoku Data', level=2),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Table(
                     data=ichimoku_data,
                     columns=[
@@ -590,6 +611,36 @@ def ichimoku_data_table(emiten_name: str) -> List[Any]:
             ]
         ),
     ]
+    
+@exception_handler
+@app.get("/api/update_ichimoku_data/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def update_ichimoku_data(emiten_name: str) -> List[Any]:
+    ichimoku_data = get_table_data(emiten_name, 'tb_data_ichimoku_cloud')
+    ichimoku_data = [IchimokuData(**{**item, 'kode_emiten': emiten_name}) for item in ichimoku_data]
+    for item in ichimoku_data:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the latest date
+    earliest_date = min(item.date for item in ichimoku_data)
+    latest_date = max(item.date for item in ichimoku_data)
+    if latest_date.date() < datetime.now().date():
+        # Download the data from Yahoo Finance for the period between the latest date and the current date
+        try:
+            data_ic, sen_status, span_status = ichimoku_sql()
+            if data_ic.empty:
+                print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
+            else:
+                data_ic = pd.DataFrame(data_ic)
+                stock_id = get_emiten_id(emiten_name)
+                data_ic['id_emiten'] = stock_id
+                insert_data_analyst('tb_data_ichimoku_cloud', data_ic)
+
+        except Exception as e:
+            print(f"Failed to download data for {emiten_name}: {e}")
+
+    return RedirectResponse(url=f"/api/ichimoku_data/{emiten_name}")
+
 
 @exception_handler
 @app.get("/api/error_metrics/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
@@ -607,6 +658,7 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
         c.Page(
             components=[
                 c.Heading(text='Error Metrics', level=2),
+                c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
@@ -617,6 +669,7 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
                         DisplayLookup(field='MAPE'),
                         DisplayLookup(field='MAE'),
                         DisplayLookup(field='MSE'),
+                        DisplayLookup(field='accuracy'),
                         DisplayLookup(field='date', mode=DisplayMode.date),
                     ],
                 ),
@@ -625,8 +678,53 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
     ]
 
 @exception_handler
+@app.get("/api/update_error_metrics/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def update_error_metrics(emiten_name: str) -> List[Any]:
+    lstm_data = get_table_data(emiten_name, 'tb_lstm')
+    lstm_data = [ErrorMetricsResponse(**{**item, 'kode_emiten': emiten_name}) for item in lstm_data]
+    
+    for item in lstm_data:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')
+    
+    # Fetch the latest date    
+    latest_date = max(item.date for item in lstm_data)
+    
+    if latest_date.date() < datetime.now().date():
+        # Download the data from Yahoo Finance for the period between the latest date and the current date
+        try:
+            historical_data = yf.download(emiten_name)
+            if historical_data.empty:
+                print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
+            else:
+                model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy = train_and_evaluate_model(historical_data, emiten_name)
+
+                historical_df = historical_data.reset_index()
+                print(historical_df.tail())
+
+                # id for fk in insert
+                stock_id = get_emiten_id(emiten_name)
+
+                # Save data to table 'tb_detail_emiten'
+                data_lstm = {
+                    'id_emiten': stock_id,
+                    'RMSE': rmse,
+                    'MAPE': mape,
+                    'MAE': mae,
+                    'MSE': mse,
+                    'accuracy' : accuracy,
+                    'date': datetime.now().strftime("%Y-%m-%d")
+                }
+                insert_data_analyst("tb_lstm", data_lstm)
+                
+        except Exception as e:
+            print(f"Failed to download data for {emiten_name}: {e}")
+
+    return RedirectResponse(url=f"/api/error_metrics/{emiten_name}")
+
+@exception_handler
 @app.get("/api/prediction/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
-def error_metrics_table(emiten_name: str) -> List[Any]:
+def prediction (emiten_name: str) -> List[Any]:
     tb_prediction_lstm = get_table_data(emiten_name, 'tb_prediction_lstm')
     tb_prediction_lstm = [PredictionLSTM(**{**item, 'kode_emiten': emiten_name}) for item in tb_prediction_lstm]
     for item in tb_prediction_lstm:
@@ -640,6 +738,7 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
         c.Page(
             components=[
                 c.Heading(text='Error Metrics', level=2),
+                c.Button(text='update data', on_click=GoToEvent(url=f'/update_prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
@@ -656,6 +755,53 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
             ]
         ),
     ]
+    
+@exception_handler
+@app.get("/api/update_prediction/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def update_prediction(emiten_name: str) -> List[Any]:
+    tb_prediction_lstm = get_table_data(emiten_name, 'tb_prediction_lstm')
+    tb_prediction_lstm = [PredictionLSTM(**{**item, 'kode_emiten': emiten_name}) for item in tb_prediction_lstm]
+    for item in tb_prediction_lstm:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the latest date
+    latest_date = max(item.date for item in tb_prediction_lstm)
+
+    if latest_date < datetime.now().date():
+        # Download the data from Yahoo Finance for the period between the latest date and the current date
+        try:
+            historical_data = yf.download(emiten_name)
+            if historical_data.empty:
+                print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
+            else:
+                model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy = train_and_evaluate_model(historical_data, emiten_name)
+                # Setting up for future predictions
+                future_prediction_period = int(len(scaled_data) * 0.1)
+                max_price, min_price, max_price_date, min_price_date = predict_future(model, scaler, scaled_data, future_prediction_period, emiten_name)
+
+                historical_df = historical_data.reset_index()
+                print(historical_df.tail())
+
+                # id for fk in insert
+                stock_id = get_emiten_id(emiten_name)
+
+                # Save data to table 'tb_detail_emiten'
+                # Save data to table 'tb_prediction_lstm'
+                data_prediction_lstm = {
+                    'id_emiten': stock_id,
+                    'max_price': max_price,
+                    'min_price': min_price,
+                    'max_price_date': max_price_date.strftime("%Y-%m-%d"),
+                    'min_price_date': min_price_date.strftime("%Y-%m-%d"),
+                    'date': datetime.now().strftime("%Y-%m-%d")
+                }
+                insert_data_analyst('tb_prediction_lstm', data_prediction_lstm)
+                
+        except Exception as e:
+            print(f"Failed to download data for {emiten_name}: {e}")
+
+    return RedirectResponse(url=f"/api/prediction/{emiten_name}")
 
 @exception_handler
 @app.get("/api/ichimoku_status/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
@@ -675,6 +821,7 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
                 c.Heading(text='Ichimoku Status', level=2),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Table(
                     data=ichimoku_status_data,
                     columns=[
@@ -688,6 +835,39 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
         ),
     ]
 
+@exception_handler
+@app.get("/api/update_ichimoku_status/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def update_ichimoku_status(emiten_name: str) -> List[Any]:
+    ichimoku_status_data = get_table_data(emiten_name, 'tb_ichimoku_status')
+    ichimoku_status_data = [IchimokuStatus(**{**item, 'kode_emiten': emiten_name}) for item in ichimoku_status_data]
+    for item in ichimoku_status_data:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the latest date
+    earliest_date = min(item.date for item in ichimoku_status_data)
+    latest_date = max(item.date for item in ichimoku_status_data)
+    if latest_date.date() < datetime.now().date():
+        # Download the data from Yahoo Finance for the period between the latest date and the current date
+        try:
+            data_ic, sen_status, span_status = ichimoku_sql()
+            if data_ic.empty:
+                print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
+            else:
+                stock_id = get_emiten_id(emiten_name)
+                data_ic_status = {
+                    'id_emiten': stock_id,
+                    'sen_status': sen_status,
+                    'span_status': span_status,
+                    'date': datetime.now().strftime("%Y-%m-%d")
+                }
+                insert_data_analyst('tb_ichimoku_status', data_ic_status)
+
+        except Exception as e:
+            print(f"Failed to download data for {emiten_name}: {e}")
+
+    return RedirectResponse(url=f"/api/ichimoku_status/{emiten_name}")
+    
 @app.get("/api/charts/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def charts_table(emiten_name: str) -> List[Any]:
     emiten_chart = get_table_data(emiten_name, 'tb_summary')
@@ -834,6 +1014,7 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
                 c.Heading(text='Ichimoku Accuracy', level=2),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Table(
                     data=accuracy_ichimoku_cloud,
                     columns=[
@@ -850,6 +1031,65 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
             ]
         ),
     ]
+
+@exception_handler
+@app.get("/api/update_ichimoku_accuracy/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def update_ichimoku_accuracy(emiten_name: str) -> List[Any]:
+    accuracy_ichimoku_cloud = get_table_data(emiten_name, 'tb_accuracy_ichimoku_cloud')
+    accuracy_ichimoku_cloud = [IchimokuAccuracy(**{**item, 'kode_emiten': emiten_name}) for item in accuracy_ichimoku_cloud]
+    for item in accuracy_ichimoku_cloud:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in accuracy_ichimoku_cloud)
+    latest_date = max(item.date for item in accuracy_ichimoku_cloud)
+    
+    if latest_date < datetime.now().date():
+        try:
+            # Hasil pembuktian
+            tren_1hari_sen, tren_1minggu_sen, tren_1bulan_sen = pembuktian_ichimoku(emiten_name, 'sen')
+            tren_1hari_span, tren_1minggu_span, tren_1bulan_span = pembuktian_ichimoku(emiten_name, 'span')
+            
+            # Cek jika list kosong dengan cara yang benar
+            if not tren_1hari_sen and not tren_1minggu_sen and not tren_1bulan_sen and not tren_1hari_span and not tren_1minggu_span and not tren_1bulan_span:
+                print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
+            else:
+                # Hitung akurasi jika tidak kosong
+                percent_1_hari_sen = pd.Series(tren_1hari_sen).mean() * 100
+                percent_1_minggu_sen = pd.Series(tren_1minggu_sen).mean() * 100
+                percent_1_bulan_sen = pd.Series(tren_1bulan_sen).mean() * 100
+
+                percent_1_hari_span = pd.Series(tren_1hari_span).mean() * 100
+                percent_1_minggu_span = pd.Series(tren_1minggu_span).mean() * 100
+                percent_1_bulan_span = pd.Series(tren_1bulan_span).mean() * 100
+
+                print(f"Accuracy tren 1 hari SEN: {percent_1_hari_sen}%")
+                print(f"Accuracy tren 1 minggu SEN: {percent_1_minggu_sen}%")
+                print(f"Accuracy tren 1 bulan SEN: {percent_1_bulan_sen}%")
+
+                print(f"\nAccuracy tren 1 hari SPAN: {percent_1_hari_span}%")
+                print(f"Accuracy tren 1 minggu SPAN: {percent_1_minggu_span}%")
+                print(f"Accuracy tren 1 bulan SPAN: {percent_1_bulan_span}%")
+                
+                stock_id = get_emiten_id(emiten_name)
+                
+                data_accuracy_ichimoku = {
+                    'id_emiten': stock_id,
+                    'percent_1_hari_sen': percent_1_hari_sen,
+                    'percent_1_minggu_sen': percent_1_minggu_sen,
+                    'percent_1_bulan_sen': percent_1_bulan_sen,
+                    'percent_1_hari_span': percent_1_hari_span,
+                    'percent_1_minggu_span': percent_1_minggu_span,
+                    'percent_1_bulan_span': percent_1_bulan_span,
+                    'date': datetime.now().strftime("%Y-%m-%d")
+                }
+                insert_data_analyst('tb_accuracy_ichimoku_cloud', data_accuracy_ichimoku)
+        
+        except Exception as e:
+            print(f"Failed to download data for {emiten_name}: {e}")
+
+    return RedirectResponse(url=f"/api/ichimoku_accuracy/{emiten_name}")
 
 @exception_handler
 @app.get("/api/ichimoku_by_date/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
@@ -994,16 +1234,20 @@ def lstm_accuracy_table(emiten_name: str) -> List[Any]:
     for item in accuracy_lstm:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+            print(f"tanggal : {item.date}")
 
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in accuracy_lstm)
+    print(f"1000: {earliest_date}")
     latest_date = max(item.date for item in accuracy_lstm)
+    print(f"1002: {latest_date}")
     return [
         c.Page(
             components=[
                 c.Heading(text='Ichimoku Accuracy', level=2),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Table(
                     data=accuracy_lstm,
                     columns=[
@@ -1020,6 +1264,70 @@ def lstm_accuracy_table(emiten_name: str) -> List[Any]:
             ]
         ),
     ]
+    
+@exception_handler
+@app.get("/api/update_lstm_accuracy_data/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def update_lstm_accuracy_data(emiten_name: str) -> List[Any]:
+    accuracy_lstm = get_table_data(emiten_name, 'tb_accuracy_lstm')
+    accuracy_lstm = [LSTMAccuracy(**{**{k: v if v is not None else 0.0 for k, v in item.items()}, 'kode_emiten': emiten_name}) for item in accuracy_lstm]
+    for item in accuracy_lstm:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+            print(f"tanggal : {item.date}")
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in accuracy_lstm)
+    print(f"1000: {earliest_date}")
+    latest_date = max(item.date for item in accuracy_lstm)
+    print(f"1002: {latest_date}")
+    
+    if latest_date < datetime.now().date():
+        # Download the data from Yahoo Finance for the period between the latest date and the current date
+        try:
+            historical_data = yf.download(emiten_name)
+            if historical_data.empty:
+                print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
+            else:
+                model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy = train_and_evaluate_model(historical_data, emiten_name)
+                valid_reset = valid.reset_index()
+
+                historical_df = historical_data.reset_index()
+                print(historical_df.tail())
+
+                # id for fk in insert
+                stock_id = get_emiten_id(emiten_name)
+
+                # Calculate the accuracy of the price predictions
+                accuracy_price_prediction_1_day = 100 - abs((valid_reset['Predictions'][0] - valid_reset['Close'][0]) / valid_reset['Close'][0] * 100) if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) and pd.notnull(valid_reset['Close'][0]) else None
+                # Calculate the mean accuracy of the price predictions for a week
+                accuracy_price_prediction_1_week = 100 - abs((valid_reset['Predictions'][1:7] - valid_reset['Close'][1:7]) / valid_reset['Close'][1:7] * 100).mean() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][1:7]).any() and pd.notnull(valid_reset['Close'][1:7]).any() else None
+                # Calculate the mean accuracy of the price predictions for a month
+                accuracy_price_prediction_1_month = 100 - abs((valid_reset['Predictions'][1:30] - valid_reset['Close'][1:30]) / valid_reset['Close'][1:30] * 100).mean() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][1:30]).any() and pd.notnull(valid_reset['Close'][1:30]).any() else None  
+                # Calculate the mean accuracy of the price predictions for a quarter
+                accuracy_price_prediction_1_quarter = 100 - abs((valid_reset['Predictions'][1:90] - valid_reset['Close'][1:90]) / valid_reset['Close'][1:90] * 100).mean() if len(valid_reset['Predictions']) > 89 and pd.notnull(valid_reset['Predictions'][1:90]).any() and pd.notnull(valid_reset['Close'][1:90]).any() else None
+                # Calculate the mean accuracy of the price predictions for a half year
+                accuracy_price_prediction_1_half_year = 100 - abs((valid_reset['Predictions'][1:180] - valid_reset['Close'][1:180]) / valid_reset['Close'][1:180] * 100).mean() if len(valid_reset['Predictions']) > 179 and pd.notnull(valid_reset['Predictions'][1:180]).any() and pd.notnull(valid_reset['Close'][1:180]).any() else None  
+                # Calculate the mean accuracy of the price predictions for a year
+                accuracy_price_prediction_1_year = 100 - abs((valid_reset['Predictions'][1:360] - valid_reset['Close'][1:360]) / valid_reset['Close'][1:360] * 100).mean() if len(valid_reset['Predictions']) > 359 and pd.notnull(valid_reset['Predictions'][1:360]).any() and pd.notnull(valid_reset['Close'][1:360]).any() else None  
+                
+                date_save = datetime.now().strftime("%Y-%m-%d")
+                data_accuracy_lstm = {
+                    'id_emiten': stock_id,
+                    'day': accuracy_price_prediction_1_day,
+                    'week': accuracy_price_prediction_1_week,
+                    'month': accuracy_price_prediction_1_month,
+                    'quarter': accuracy_price_prediction_1_quarter,
+                    'half_year': accuracy_price_prediction_1_half_year,
+                    'year': accuracy_price_prediction_1_year,
+                    'date': date_save
+                }
+                insert_data_analyst('tb_accuracy_lstm', data_accuracy_lstm)
+                
+        except Exception as e:
+            print(f"Failed to download data for {emiten_name}: {e}")
+
+    return RedirectResponse(url=f"/api/lstm_accuracy_data/{emiten_name}")
+
     
 @exception_handler
 @app.get("/api/recommendation", response_model=FastUI, response_model_exclude_none=True)
@@ -1052,7 +1360,7 @@ def emiten_recommendation():
         c.Page(
             components=[
                 c.Heading(text='Emiten Recommendation', level=2),
-                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/')),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
                 c.Heading(text='Grade 1', level=6),
                 c.Table(
                     data=data_1,
@@ -1077,6 +1385,24 @@ def emiten_recommendation():
             ]
         ),
     ]
+    
+@exception_handler
+@app.get("/api/testing/{angka}", response_model=FastUI, response_model_exclude_none=True)
+def testing(angka: int):  # Define angka as a parameter
+    return [
+        c.Page(
+            components=[
+                c.Heading(text=f'angka sekarang : {angka}', level=2),
+                c.Button(text='tambah angka', on_click=GoToEvent(url=f'/testing2/{angka}'), named_style='secondary', class_name='ms-2'),
+            ]
+        ),
+    ]
+    
+@exception_handler
+@app.get("/api/testing2/{angka}", response_model=FastUI, response_model_exclude_none=True)
+def testing2(angka: int):  # Define angka as a parameter
+    angka = angka + angka
+    return RedirectResponse(url=f"/api/testing/{angka}")  # Use f-string to format the URL
     
 @app.get('/{path:path}')
 async def html_landing() -> HTMLResponse:

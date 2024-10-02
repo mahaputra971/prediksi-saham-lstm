@@ -34,15 +34,14 @@ def get_trend(tenkan_sen):
 
 
 def get_tenkan_sen_status(trends):
-    sum = 0 # summary for each trend 
+    total_trend = 0  # summary for each trend 
     for trend in trends:
-        sum += trend
-    
+        total_trend += trend
+
     # Determine the trend status
-    tenkan_sen_status = str
-    if sum > 0:
+    if total_trend > 0:
         tenkan_sen_status = "The Tenkan-Sen is in an uptrend."
-    elif sum < 0:
+    elif total_trend < 0:
         tenkan_sen_status = "The Tenkan-Sen is in a downtrend."
     else:
         tenkan_sen_status = "The Tenkan-Sen is moving sideways."
@@ -97,8 +96,10 @@ def ichimoku_project(stock):
             print(f"An error occurred while fetching data: {e}")
             return None
         
-        if df is None:
+        # if df is None:
+        if df.empty:
             print("Data is None after fetching")
+            return None
         else:
             print("Data fetched successfully")
 
@@ -133,8 +134,6 @@ def ichimoku_project(stock):
         # convert dataframe into array of json
         all_ichimoku_data = json.loads(df.reset_index().to_json(orient='records'))
         
-
-        # perform insert data to mongoDB
 
 		# return current_ichimoku_data and all the array ichimoku data from the data from this is an 2D array
         return all_ichimoku_data
@@ -870,5 +869,6 @@ def pembuktian_ichimoku(stock, type):
             except Exception as e:
                 print(f"Error occurred: {e}")
                 break
-    
+            
+    # print(type(array_1_hari), type(array_1_minggu), type(array_1_bulan))
     return array_1_hari, array_1_minggu, array_1_bulan
