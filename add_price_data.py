@@ -73,7 +73,7 @@ def job():
 
 def main():
     # Schedule the job to run at 12:00 PM every day
-    schedule.every().day.at("01:37").do(job)
+    schedule.every().day.at("19:00").do(job) 
 
     # Keep the script running
     while True:
