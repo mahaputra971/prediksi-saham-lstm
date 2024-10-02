@@ -294,7 +294,7 @@ def engine_main(stock, stock_name):
     
     if data.empty:
         print(f"Stock {stock} not found in data.")
-        return
+        return None
     
     company_df = data
     
