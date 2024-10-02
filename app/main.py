@@ -11,7 +11,7 @@ from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent
 from fastapi.staticfiles import StaticFiles
 from app.sql import get_table_data, get_emiten_status, get_emiten_id, insert_data_analyst, fetch_emiten_recommendation
-from app.predict import predict_with_loaded_model, predict_future, ichimoku_predict, train_and_evaluate_model
+from app.predict import predict_with_loaded_model, forcasting_stock, forcasting_stock2, ichimoku_predict, train_and_evaluate_model2, train_and_evaluate_model3
 from app.exception import exception_handler
 from app.engine import engine_main, train_and_evaluate_model, predict_future
 
@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import FileResponse
 from fastui.events import BackEvent, PageEvent
 from fastui.forms import fastui_form
+from fastapi import Query
 from integrations import exception_handler, blob_to_data_url, ichimoku_sql, pembuktian_ichimoku
 import os
 from fastapi.staticfiles import StaticFiles
@@ -168,8 +169,8 @@ class IchimokuStatus(BaseModel):
 class PredictionLSTM(BaseModel):
     kode_emiten: str
     max_price: float
-    min_price: float
     max_price_date: date
+    min_price: float
     min_price_date: date
     date: date
 
@@ -233,6 +234,13 @@ async def home() -> List[AnyComponent]:
 @exception_handler
 @app.post("/api/submit_emiten_form", response_model=FastUI, response_model_exclude_none=True)
 async def submit_emiten_form(emiten_name: str = Form(...)):
+    # Convert emiten_name to uppercase
+    emiten_name = emiten_name.upper()
+
+    # If emiten_name does not end with ".JK", append ".JK" to it
+    if not emiten_name.endswith(".JK"):
+        emiten_name += ".JK"
+        
     status = get_emiten_status(emiten_name)
     print(status)
     if status == 0:
@@ -241,7 +249,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
             return [
                 c.Page(
                     components=[    
-                        c.Heading(text='Select Action for Emiten', level=2),
+                        c.Heading(text=f'Select Action for Emiten {emiten_name}', level=2),
                         c.Link(components=[c.Text(text='Back to Home')], on_click=BackEvent()),
                     ]
                 ),
@@ -249,7 +257,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                     components=[
                         c.Heading(text='Result Analyst Data', level=4),
                         c.Heading(text='LSTM', level=6),
-                        c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
                         c.Button(text='LSTM Detail', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                         c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                         c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -259,20 +267,25 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                 c.Div(
                     components=[
                         c.Heading(text='Ichimoku Cloud', level=6),
-                        c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
                         c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                         c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                     ]
                 ),
                 c.Page(
                     components=[
-                        c.Heading(text='Calculate By Yourself', level=4),
-                        c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                        c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                        c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                        c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                        c.Link(components=[c.Text(text='Moderator')], on_click=GoToEvent(url=f'/navigation_moderator/{emiten_name}')),
                     ]
-                )
+                ),
+                # c.Page(
+                #     components=[
+                #         c.Heading(text='Calculate By Yourself', level=4),
+                #         # c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                #         c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                #         c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                #         c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                #     ]
+                # )
             ]
                         
         except ValueError as e:
@@ -300,7 +313,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
         return [
             c.Page(
                 components=[    
-                    c.Heading(text='Select Action for Emiten', level=2),
+                    c.Heading(text=f'Select Action for Emiten {emiten_name}', level=2),
                     c.Link(components=[c.Text(text='Back to Home')], on_click=BackEvent()),
                 ]
             ),
@@ -308,7 +321,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                 components=[
                     c.Heading(text='Result Analyst Data', level=4),
                     c.Heading(text='LSTM', level=6),
-                    c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
                     c.Button(text='LSTM Detail', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                     c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                     c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -318,20 +331,25 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
             c.Div(
                 components=[
                     c.Heading(text='Ichimoku Cloud', level=6),
-                    c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
                     c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                     c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 ]
             ),
             c.Page(
-                components=[
-                    c.Heading(text='Calculate By Yourself', level=4),
-                    c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                    c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                    c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                    c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
-                ]
-            )
+                    components=[
+                        c.Link(components=[c.Text(text='Moderator')], on_click=GoToEvent(url=f'/navigation_moderator/{emiten_name}')),
+                    ]
+            ),
+            # c.Page(
+            #     components=[
+            #         c.Heading(text='Calculate By Yourself', level=4),
+            #         # c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+            #         c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+            #         c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+            #         c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+            #     ]
+            # )
         ]
 
 @exception_handler
@@ -406,7 +424,7 @@ async def predict_price(emiten_name: str, date: int = Form(...)) -> List[AnyComp
         ]
     
     # Lanjutkan dengan prediksi jika input valid
-    predictions, plot_url = predict_future(emiten_name, date)
+    predictions, plot_url = forcasting_stock(emiten_name, date)
     if predictions is None:
         return [
             c.Page(
@@ -438,7 +456,7 @@ def navigation(emiten_name: str) -> List[Any]:
     return [
         c.Page(
             components=[
-                c.Heading(text='Select Action for Emiten', level=2),
+                c.Heading(text=f'Select Action for Emiten {emiten_name}', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
             ]
         ),
@@ -446,7 +464,7 @@ def navigation(emiten_name: str) -> List[Any]:
             components=[
                 c.Heading(text='Result Analyst Data', level=4),
                 c.Heading(text='LSTM', level=6),
-                c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='LSTM Detail', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -456,7 +474,57 @@ def navigation(emiten_name: str) -> List[Any]:
         c.Page(
             components=[
                 c.Heading(text='Ichimoku Cloud', level=6),
-                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+            ]
+        ),
+        c.Page(
+            components=[
+                c.Heading(text='Rekomendasi', level=6),
+                c.Button(text='Recommendation Stock', on_click=GoToEvent(url=f'/recommendation'), named_style='secondary', class_name='ms-2'),
+            ]
+        ),
+        c.Page(
+            components=[
+                c.Link(components=[c.Text(text='Moderator')], on_click=GoToEvent(url=f'/navigation_moderator/{emiten_name}')),
+            ]
+        ),
+        # c.Page(
+        #     components=[
+        #         c.Heading(text='Calculate By Yourself', level=4),
+        #         # c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+        #         c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+        #         c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+        #         c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+        #     ]
+        # )
+    ]
+    
+@app.get("/api/navigation_moderator/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def navigation(emiten_name: str) -> List[Any]:
+    return [
+        c.Page(
+            components=[
+                c.Heading(text=f'Select Action for Emiten {emiten_name}', level=2),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
+            ]
+        ),
+        c.Page(
+            components=[
+                c.Heading(text='Result Analyst Data', level=4),
+                c.Heading(text='LSTM', level=6),
+                c.Button(text='Data Detail Emiten', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='LSTM Detail', on_click=GoToEvent(url=f'/error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+            ]
+        ),  
+        c.Page(
+            components=[
+                c.Heading(text='Ichimoku Cloud', level=6),
+                c.Button(text='Ichimoku Data', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Status', on_click=GoToEvent(url=f'/ichimoku_status/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Ichimoku Accuracy', on_click=GoToEvent(url=f'/ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
             ]
@@ -464,17 +532,34 @@ def navigation(emiten_name: str) -> List[Any]:
         c.Page(
             components=[
                 c.Heading(text='Calculate By Yourself', level=4),
-                c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
+                # c.Button(text='LSTM by date', on_click=GoToEvent(url=f'/predict_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
                 c.Button(text='Predict by Date', on_click=GoToEvent(url=f'/predict_price_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
                 c.Button(text='Ichimoku by Date', on_click=GoToEvent(url=f'/ichimoku_by_date/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
                 c.Button(text='LSTM by date 2', on_click=GoToEvent(url=f'/lstm_accuracy/{emiten_name}'), named_style='warning', class_name='+ ms-2'),
             ]
-        )
+        ),
+        c.Page(
+            components=[
+                c.Heading(text='Rekomendasi', level=6),
+                c.Button(text='Recommendation Stock', on_click=GoToEvent(url=f'/recommendation'), named_style='secondary', class_name='ms-2'),
+            ]
+        ),
     ]
 
 @exception_handler
-@app.get("/api/update_detail_emiten/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
-def update_detail_emiten(emiten_name: str) -> List[Any]:
+@app.get("/api/detail_emiten_next/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
+def detail_emiten_next_page(emiten_name: str, current_page: int):
+    current_page = current_page + 1
+    return RedirectResponse(url=f"/api/detail_emiten/{emiten_name}/{current_page}")
+
+@exception_handler
+@app.get("/api/detail_emiten_prev/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
+def detail_emiten_prev_page(emiten_name: str, current_page: int) -> RedirectResponse:
+    return RedirectResponse(url=f"/api/detail_emiten/{emiten_name}/{max(1, current_page - 1)}")
+
+@exception_handler
+@app.get("/api/detail_emiten/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
+def detail_emiten_table(emiten_name: str, current_page: int = 1, page_size: int = 10) -> List[Any]:
     detail_emiten = get_table_data(emiten_name, 'tb_detail_emiten')
     detail_emiten = [StockPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in detail_emiten]
 
@@ -483,53 +568,75 @@ def update_detail_emiten(emiten_name: str) -> List[Any]:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
 
-    # Fetch the latest date
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in detail_emiten)
     latest_date = max(item.date for item in detail_emiten)
-    
-    if latest_date.date() < datetime.now().date():
-        # Download the data from Yahoo Finance for the period between the latest date and the current date
-        try:
-            historical_data = yf.download(emiten_name, latest_date + timedelta(days=1), datetime.now().date())
 
-            if historical_data.empty:
-                print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
-            else:
-                historical_df = historical_data.reset_index()
-                print(historical_df.tail())
+    # Run This if i want to click update button
+    # update_detail_emiten(latest_date, emiten_name, detail_emiten)
 
-                # id for fk in insert
-                stock_id = get_emiten_id(emiten_name)
+    # Convert 'date' fields back to strings if needed before returning
+    for item in detail_emiten:
+        if isinstance(item.date, datetime):
+            item.date = item.date.strftime('%d-%m-%Y')
+            
+    total_pages = len(detail_emiten) // page_size
+    if len(detail_emiten) % page_size > 0:
+        total_pages += 1
 
-                # Save data to table 'tb_detail_emiten'
-                df_copy = historical_df.reset_index()
-                df_copy['id_emiten'] = stock_id
-                df_copy = df_copy.rename(columns={
-                    'Date': 'date',
-                    'Open': 'open',
-                    'High': 'high',
-                    'Low': 'low',
-                    'Close': 'close',
-                    'Adj Close': 'close_adj',
-                    'Volume': 'volume'
-                })
-                # Convert pandas Timestamp objects to datetime.datetime objects
-                df_copy['date'] = df_copy['date'].apply(lambda x: x.to_pydatetime().strftime('%Y-%m-%d'))
+    # Pagination
+    start = (current_page - 1) * page_size
+    end = start + page_size
+    detail_emiten = detail_emiten[start:end]
 
-                # Remove the 'kode_emiten' column
-                df_copy = df_copy.drop(columns=['index'])
+    components_with_next = [
+        c.Heading(text=f'Detail Emiten {emiten_name}', level=2),
+        c.Heading(text=f'From {earliest_date.strftime('%Y-%m-%d')} To {latest_date.strftime('%Y-%m-%d')}', level=6),
+        c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+        c.Button(text='Previous', on_click=GoToEvent(url=f'/detail_emiten_prev/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Button(text='Next', on_click=GoToEvent(url=f'/detail_emiten_next/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Table(
+            data=detail_emiten,
+            columns=[
+                DisplayLookup(field='kode_emiten'),
+                DisplayLookup(field='open'),
+                DisplayLookup(field='high'),
+                DisplayLookup(field='low'),
+                DisplayLookup(field='close'),
+                DisplayLookup(field='close_adj'),
+                DisplayLookup(field='volume'),
+                DisplayLookup(field='date', mode=DisplayMode.date),
+            ],
+        ),
+        c.Heading(text=f'Page {current_page}', level=6),
+    ]
 
-                insert_data_analyst("tb_detail_emiten", df_copy)
+    components_without_next = [
+        c.Heading(text=f'Detail Emiten {emiten_name}', level=2),
+        c.Heading(text=f'From {earliest_date.strftime('%Y-%m-%d')} To {latest_date.strftime('%Y-%m-%d')}', level=6),
+        c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+        c.Button(text='Previous', on_click=GoToEvent(url=f'/detail_emiten_prev/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Table(
+            data=detail_emiten,
+            columns=[
+                DisplayLookup(field='kode_emiten'),
+                DisplayLookup(field='open'),
+                DisplayLookup(field='high'),
+                DisplayLookup(field='low'),
+                DisplayLookup(field='close'),
+                DisplayLookup(field='close_adj'),
+                DisplayLookup(field='volume'),
+                DisplayLookup(field='date', mode=DisplayMode.date),
+            ],
+        ),
+        c.Heading(text=f'Page {current_page}', level=6),
+    ]
 
-                # Update detail_emiten with the new data
-                new_data = get_table_data(emiten_name, 'tb_detail_emiten')
-                detail_emiten.extend([StockPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in new_data if datetime.strptime(item['date'], '%Y-%m-%d') > latest_date])
-                # Update the latest date
-                latest_date = max(item.date for item in detail_emiten)
-
-        except Exception as e:
-            print(f"Failed to download data for {emiten_name}: {e}")
-
-    return RedirectResponse(url=f"/api/detail_emiten/{emiten_name}")
+    return [
+        c.Page(
+            components=components_with_next if current_page < total_pages else components_without_next
+        ),
+    ]
 
 @exception_handler
 @app.get("/api/detail_emiten/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
@@ -552,12 +659,12 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
     # Convert 'date' fields back to strings if needed before returning
     for item in detail_emiten:
         if isinstance(item.date, datetime):
-            item.date = item.date.strftime('%Y-%m-%d')
+            item.date = item.date.strftime('%d-%m-%Y')
 
     return [
         c.Page(
             components=[
-                c.Heading(text=f'Detail Emiten', level=2),
+                c.Heading(text=f'Detail Emiten {emiten_name}', level=2),
                 c.Heading(text=f'From {earliest_date.strftime('%Y-%m-%d')} To {latest_date.strftime('%Y-%m-%d')}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -573,7 +680,7 @@ def detail_emiten_table(emiten_name: str) -> List[Any]:
                         DisplayLookup(field='volume'),
                         DisplayLookup(field='date', mode=DisplayMode.date),
                     ],
-                ),
+                ),  
             ]
         ),
     ]
@@ -586,6 +693,10 @@ def ichimoku_data_table(emiten_name: str) -> List[Any]:
     for item in ichimoku_data:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+    
+    for item in ichimoku_data:
+        if isinstance(item.date, datetime):
+            item.date = item.date.strftime('%d-%m-%Y')
 
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in ichimoku_data)
@@ -593,7 +704,7 @@ def ichimoku_data_table(emiten_name: str) -> List[Any]:
     return [
         c.Page(
             components=[
-                c.Heading(text='Ichimoku Data', level=2),
+                c.Heading(text=f'Ichimoku Data {emiten_name}', level=2),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -620,7 +731,11 @@ def update_ichimoku_data(emiten_name: str) -> List[Any]:
     for item in ichimoku_data:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
-
+    
+    for item in ichimoku_data:
+        if isinstance(item.date, datetime):
+            item.date = item.date.strftime('%d-%m-%Y')
+            
     # Fetch the latest date
     earliest_date = min(item.date for item in ichimoku_data)
     latest_date = max(item.date for item in ichimoku_data)
@@ -641,6 +756,101 @@ def update_ichimoku_data(emiten_name: str) -> List[Any]:
 
     return RedirectResponse(url=f"/api/ichimoku_data/{emiten_name}")
 
+@exception_handler
+@app.get("/api/ichimoku_data_next/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
+def update_ichimoku_data_next_page(emiten_name: str, current_page: int):
+    current_page = current_page + 1
+    return RedirectResponse(url=f"/api/ichimoku_data/{emiten_name}/{current_page}")
+
+@exception_handler
+@app.get("/api/ichimoku_data_prev/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
+def update_ichimoku_data_prev_page(emiten_name: str, current_page: int) -> RedirectResponse:
+    return RedirectResponse(url=f"/api/ichimoku_data/{emiten_name}/{max(1, current_page - 1)}")
+
+@exception_handler
+@app.get("/api/ichimoku_data/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
+def update_ichimoku_data(emiten_name: str, current_page: int = 1, page_size: int = 10) -> List[Any]:
+    ichimoku_data = get_table_data(emiten_name, 'tb_data_ichimoku_cloud')
+    ichimoku_data = [IchimokuData(**{**item, 'kode_emiten': emiten_name}) for item in ichimoku_data]
+
+    for item in ichimoku_data:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    for item in ichimoku_data:
+        if isinstance(item.date, datetime):
+            item.date = item.date.strftime('%d-%m-%Y')
+
+    earliest_date = min(datetime.strptime(item.date, '%d-%m-%Y') for item in ichimoku_data)
+    latest_date = max(datetime.strptime(item.date, '%d-%m-%Y') for item in ichimoku_data)
+
+    # if latest_date.date() < datetime.now().date():
+    #     try:
+    #         data_ic, sen_status, span_status = ichimoku_sql()
+    #         if data_ic.empty:
+    #             print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
+    #         else:
+    #             data_ic = pd.DataFrame(data_ic)
+    #             stock_id = get_emiten_id(emiten_name)
+    #             data_ic['id_emiten'] = stock_id
+    #             insert_data_analyst('tb_data_ichimoku_cloud', data_ic)
+
+    #     except Exception as e:
+    #         print(f"Failed to download data for {emiten_name}: {e}")
+
+    total_pages = len(ichimoku_data) // page_size
+    if len(ichimoku_data) % page_size > 0:
+        total_pages += 1
+
+    # Pagination
+    start = (current_page - 1) * page_size
+    end = start + page_size
+    ichimoku_data = ichimoku_data[start:end]
+
+    components_with_next = [
+        c.Heading(text=f'Ichimoku Data {emiten_name}', level=2),
+        c.Heading(text=f'From {earliest_date.strftime('%Y-%m-%d')} To {latest_date.strftime('%Y-%m-%d')}', level=6),
+        c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+        c.Button(text='Previous', on_click=GoToEvent(url=f'/ichimoku_data_prev/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Button(text='Next', on_click=GoToEvent(url=f'/ichimoku_data_next/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Table(
+            data=ichimoku_data,
+            columns=[
+                DisplayLookup(field='kode_emiten'),
+                DisplayLookup(field='tenkan_sen'),
+                DisplayLookup(field='kijun_sen'),
+                DisplayLookup(field='senkou_span_a'),
+                DisplayLookup(field='senkou_span_b'),
+                DisplayLookup(field='date', mode=DisplayMode.date),
+            ],
+        ),
+        c.Heading(text=f'Page {current_page}', level=6),
+    ]
+
+    components_without_next = [
+        c.Heading(text=f'Ichimoku Data {emiten_name}', level=2),
+        c.Heading(text=f'From {earliest_date.strftime('%Y-%m-%d')} To {latest_date.strftime('%Y-%m-%d')}', level=6),
+        c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+        c.Button(text='Previous', on_click=GoToEvent(url=f'/ichimoku_data_prev/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Table(
+            data=ichimoku_data,
+            columns=[
+                DisplayLookup(field='kode_emiten'),
+                DisplayLookup(field='tenkan_sen'),
+                DisplayLookup(field='kijun_sen'),
+                DisplayLookup(field='senkou_span_a'),
+                DisplayLookup(field='senkou_span_b'),
+                DisplayLookup(field='date', mode=DisplayMode.date),
+            ],
+        ),
+        c.Heading(text=f'Page {current_page}', level=6),
+    ]
+
+    return [
+        c.Page(
+            components=components_with_next if current_page < total_pages else components_without_next
+        ),
+    ]
 
 @exception_handler
 @app.get("/api/error_metrics/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
@@ -651,13 +861,17 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
 
+    for item in lstm_data:
+        if isinstance(item.date, datetime):
+            item.date = item.date.strftime('%d-%m-%Y')
+    
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in lstm_data)
     latest_date = max(item.date for item in lstm_data)
     return [
         c.Page(
             components=[
-                c.Heading(text='Error Metrics', level=2),
+                c.Heading(text=f'Error Metrics {emiten_name}', level=2),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
@@ -686,6 +900,10 @@ def update_error_metrics(emiten_name: str) -> List[Any]:
     for item in lstm_data:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')
+            
+    for item in lstm_data:
+        if isinstance(item.date, datetime):
+            item.date = item.date.strftime('%d-%m-%Y')
     
     # Fetch the latest date    
     latest_date = max(item.date for item in lstm_data)
@@ -713,7 +931,7 @@ def update_error_metrics(emiten_name: str) -> List[Any]:
                     'MAE': mae,
                     'MSE': mse,
                     'accuracy' : accuracy,
-                    'date': datetime.now().strftime("%Y-%m-%d")
+                    'date': datetime.now().strftime('%d-%m-%Y')
                 }
                 insert_data_analyst("tb_lstm", data_lstm)
                 
@@ -726,18 +944,24 @@ def update_error_metrics(emiten_name: str) -> List[Any]:
 @app.get("/api/prediction/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def prediction (emiten_name: str) -> List[Any]:
     tb_prediction_lstm = get_table_data(emiten_name, 'tb_prediction_lstm')
+    image_path_prediction = f"/static2/prediction/{emiten_name}.png"
     tb_prediction_lstm = [PredictionLSTM(**{**item, 'kode_emiten': emiten_name}) for item in tb_prediction_lstm]
     for item in tb_prediction_lstm:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
-
+            
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in tb_prediction_lstm)
     latest_date = max(item.date for item in tb_prediction_lstm)
+    
+    for item in tb_prediction_lstm:
+        if isinstance(item.date, date):
+            item.date = item.date.strftime('%d-%m-%Y')
+            
     return [
         c.Page(
             components=[
-                c.Heading(text='Error Metrics', level=2),
+                c.Heading(text= f'Error Metrics {emiten_name}', level=2),
                 c.Button(text='update data', on_click=GoToEvent(url=f'/update_prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
@@ -746,14 +970,30 @@ def prediction (emiten_name: str) -> List[Any]:
                     columns=[
                         DisplayLookup(field='kode_emiten'),
                         DisplayLookup(field='max_price'),
-                        DisplayLookup(field='min_price'),
                         DisplayLookup(field='max_price_date'),
+                        DisplayLookup(field='min_price'),
                         DisplayLookup(field='min_price_date'),
                         DisplayLookup(field='date', mode=DisplayMode.date),
                     ],
                 ),
             ]
         ),
+        c.Page(
+            components=[
+                c.Heading(text='Prediction', level=2),
+                c.Paragraph(text='This shows the predicted close price of the stock.'),
+                c.Image(
+                    src=image_path_prediction,
+                    alt='Prediction',
+                    width=1000,
+                    height=500,
+                    loading='lazy',
+                    referrer_policy='no-referrer',
+                    class_name='border rounded',
+                ),
+            ],
+            class_name='border-top mt-3 pt-1 center-content',
+        ), 
     ]
     
 @exception_handler
@@ -765,6 +1005,10 @@ def update_prediction(emiten_name: str) -> List[Any]:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
 
+    for item in tb_prediction_lstm:
+        if isinstance(item.date, date):
+            item.date = item.date.strftime('%d-%m-%Y')
+    
     # Fetch the latest date
     latest_date = max(item.date for item in tb_prediction_lstm)
 
@@ -792,9 +1036,9 @@ def update_prediction(emiten_name: str) -> List[Any]:
                     'id_emiten': stock_id,
                     'max_price': max_price,
                     'min_price': min_price,
-                    'max_price_date': max_price_date.strftime("%Y-%m-%d"),
-                    'min_price_date': min_price_date.strftime("%Y-%m-%d"),
-                    'date': datetime.now().strftime("%Y-%m-%d")
+                    'max_price_date': max_price_date.strftime('%d-%m-%Y'),
+                    'min_price_date': min_price_date.strftime('%d-%m-%Y'),
+                    'date': datetime.now().strftime('%d-%m-%Y')
                 }
                 insert_data_analyst('tb_prediction_lstm', data_prediction_lstm)
                 
@@ -811,14 +1055,18 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
     for item in ichimoku_status_data:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
-
+    
+    for item in ichimoku_status_data:
+        if isinstance(item.date, date):
+            item.date = item.date.strftime('%d-%m-%Y')
+            
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in ichimoku_status_data)
     latest_date = max(item.date for item in ichimoku_status_data)
     return [
         c.Page(
             components=[
-                c.Heading(text='Ichimoku Status', level=2),
+                c.Heading(text=f'Ichimoku Status {emiten_name}', level=2),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -843,7 +1091,11 @@ def update_ichimoku_status(emiten_name: str) -> List[Any]:
     for item in ichimoku_status_data:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
-
+    
+    for item in ichimoku_status_data:
+        if isinstance(item.date, date):
+            item.date = item.date.strftime('%d-%m-%Y')
+            
     # Fetch the latest date
     earliest_date = min(item.date for item in ichimoku_status_data)
     latest_date = max(item.date for item in ichimoku_status_data)
@@ -859,7 +1111,7 @@ def update_ichimoku_status(emiten_name: str) -> List[Any]:
                     'id_emiten': stock_id,
                     'sen_status': sen_status,
                     'span_status': span_status,
-                    'date': datetime.now().strftime("%Y-%m-%d")
+                    'date': datetime.now().strftime('%d-%m-%Y')
                 }
                 insert_data_analyst('tb_ichimoku_status', data_ic_status)
 
@@ -878,10 +1130,16 @@ def charts_table(emiten_name: str) -> List[Any]:
     image_path_prediction = f"/static2/prediction/{emiten_name}.png"
     image_path_sales_volume = f"/static2/sales_volume/{emiten_name}.png"
     emiten_chart = [ChartResponse(**{**item, 'kode_emiten': emiten_name}) for item in emiten_chart]
+    for item in emiten_chart:
+        if isinstance(item.render_date, str):
+            item.render_date = datetime.strptime(item.render_date, '%Y-%m-%d')
+    for item in emiten_chart:
+        if isinstance(item.render_date, datetime):
+            item.render_date = item.render_date.strftime('%d-%m-%Y')
     return [
         c.Page(
             components=[
-                c.Heading(text='Charts', level=2),
+                c.Heading(text=f'Charts {emiten_name}', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Table(
                     data=emiten_chart,
@@ -1005,13 +1263,17 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
 
+    for item in accuracy_ichimoku_cloud:
+        if isinstance(item.date, date):
+            item.date = item.date.strftime('%d-%m-%Y')
+    
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in accuracy_ichimoku_cloud)
     latest_date = max(item.date for item in accuracy_ichimoku_cloud)
     return [
         c.Page(
             components=[
-                c.Heading(text='Ichimoku Accuracy', level=2),
+                c.Heading(text=f'Ichimoku Accuracy {emiten_name}', level=2),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -1041,6 +1303,10 @@ def update_ichimoku_accuracy(emiten_name: str) -> List[Any]:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
 
+    for item in accuracy_ichimoku_cloud:
+        if isinstance(item.date, date):
+            item.date = item.date.strftime('%d-%m-%Y')
+            
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in accuracy_ichimoku_cloud)
     latest_date = max(item.date for item in accuracy_ichimoku_cloud)
@@ -1082,7 +1348,7 @@ def update_ichimoku_accuracy(emiten_name: str) -> List[Any]:
                     'percent_1_hari_span': percent_1_hari_span,
                     'percent_1_minggu_span': percent_1_minggu_span,
                     'percent_1_bulan_span': percent_1_bulan_span,
-                    'date': datetime.now().strftime("%Y-%m-%d")
+                    'date': datetime.now().strftime('%d-%m-%Y')
                 }
                 insert_data_analyst('tb_accuracy_ichimoku_cloud', data_accuracy_ichimoku)
         
@@ -1181,7 +1447,7 @@ async def lstm_accuracy_result(emiten_name: str, start_date: date = Form(...), e
     
     try:
         # Prediksi menggunakan model
-        result, plot_path, plot_path_2, valid = train_and_evaluate_model(emiten_name, start_date, end_date, future_date)
+        result, plot_path, plot_path_2, valid = train_and_evaluate_model2(emiten_name, start_date, end_date, future_date)
         valid = valid.reset_index()
         data = valid.to_dict('records')
         data = [PredicValid(**{**item, 'kode_emiten': emiten_name}) for item in data]
@@ -1235,6 +1501,10 @@ def lstm_accuracy_table(emiten_name: str) -> List[Any]:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
             print(f"tanggal : {item.date}")
+            
+    for item in accuracy_lstm:
+        if isinstance(item.date, date):
+            item.date = item.date.strftime('%d-%m-%Y')
 
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in accuracy_lstm)
@@ -1244,7 +1514,7 @@ def lstm_accuracy_table(emiten_name: str) -> List[Any]:
     return [
         c.Page(
             components=[
-                c.Heading(text='Ichimoku Accuracy', level=2),
+                c.Heading(text=f'Ichimoku Accuracy {emiten_name}', level=2),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
@@ -1274,6 +1544,10 @@ def update_lstm_accuracy_data(emiten_name: str) -> List[Any]:
         if isinstance(item.date, str):
             item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
             print(f"tanggal : {item.date}")
+            
+    for item in accuracy_lstm:
+        if isinstance(item.date, date):
+            item.date = item.date.strftime('%d-%m-%Y')
 
     # Fetch the earliest and latest date
     earliest_date = min(item.date for item in accuracy_lstm)
@@ -1310,7 +1584,7 @@ def update_lstm_accuracy_data(emiten_name: str) -> List[Any]:
                 # Calculate the mean accuracy of the price predictions for a year
                 accuracy_price_prediction_1_year = 100 - abs((valid_reset['Predictions'][1:360] - valid_reset['Close'][1:360]) / valid_reset['Close'][1:360] * 100).mean() if len(valid_reset['Predictions']) > 359 and pd.notnull(valid_reset['Predictions'][1:360]).any() and pd.notnull(valid_reset['Close'][1:360]).any() else None  
                 
-                date_save = datetime.now().strftime("%Y-%m-%d")
+                date_save = datetime.now().strftime('%d-%m-%Y')
                 data_accuracy_lstm = {
                     'id_emiten': stock_id,
                     'day': accuracy_price_prediction_1_day,
@@ -1333,6 +1607,11 @@ def update_lstm_accuracy_data(emiten_name: str) -> List[Any]:
 @app.get("/api/recommendation", response_model=FastUI, response_model_exclude_none=True)
 def emiten_recommendation():
     data_1, data_2, data_3 = fetch_emiten_recommendation()
+    
+    # Convert lists to sets to remove duplicates
+    data_1 = list(set(data_1))
+    data_2 = list(set(data_2))
+    data_3 = list(set(data_3))
 
     if len(data_1) == 0 : 
         data_1 = ['Kosong']
