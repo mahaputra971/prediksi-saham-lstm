@@ -60,6 +60,9 @@ def plot_stock_data(company, column, xlabel, ylabel, title, folder_name, stock):
     plt.savefig(f'picture/{folder_name}/{stock}.png')
     plt.close()
     
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.layers import Dropout 
+
 def train_and_evaluate_model(df, stock_name):
     data = df.filter(['Close'])
     dataset = data.values
@@ -78,14 +81,21 @@ def train_and_evaluate_model(df, stock_name):
     x_train, y_train = np.array(x_train), np.array(y_train)
     x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
 
+    # Model with added Dropout layers and Early Stopping
     model = Sequential()
     model.add(LSTM(128, return_sequences=True, input_shape=(x_train.shape[1], 1)))
+    model.add(Dropout(0.2))  # Added dropout layer
     model.add(LSTM(64, return_sequences=False))
+    model.add(Dropout(0.2))  # Added dropout layer
     model.add(Dense(25))
     model.add(Dense(1))
 
     model.compile(optimizer='adam', loss='mean_squared_error')
-    model.fit(x_train, y_train, batch_size=1, epochs=1)
+
+    # Early stopping callback to avoid overfitting
+    early_stop = EarlyStopping(monitor='loss', patience=3, verbose=1)
+
+    model.fit(x_train, y_train, batch_size=1, epochs=1, callbacks=[early_stop])
 
     test_data = scaled_data[training_data_len - 60:]
     x_test, y_test = [], dataset[training_data_len:]
@@ -114,7 +124,6 @@ def train_and_evaluate_model(df, stock_name):
     plt.savefig(f'picture/accuracy/{stock_name}.png')
     plt.close()
 
-    print(valid)
     valid_reset = valid.reset_index()
 
     if len(valid_reset['Predictions']) > 0 and valid_reset['Predictions'].notnull().all() and valid_reset['Close'].notnull().all():
@@ -124,16 +133,9 @@ def train_and_evaluate_model(df, stock_name):
         accuracy = None
 
     mae = mean_absolute_error(valid['Close'], valid['Predictions'])
-    print(f"Mean Absolute Error (MAE): {mae}")
-
     mse = mean_squared_error(valid['Close'], valid['Predictions'])
-    print(f"Mean Squared Error (MSE): {mse}")
-
     rmse = np.sqrt(mse)
-    print(f"Root Mean Squared Error (RMSE): {rmse}")
-
     mape = mean_absolute_percentage_error(valid['Close'], valid['Predictions'])
-    print(f'Mean Absolute Percentage Error (MAPE): {mape}%')
 
     highest_prediction = valid['Close'].max()
     lowest_prediction = valid['Close'].min()
@@ -141,14 +143,13 @@ def train_and_evaluate_model(df, stock_name):
     highest_date = valid['Close'].idxmax()
     lowest_date = valid['Close'].idxmin()
 
-    print(f"Highest prediction: {highest_prediction} on {highest_date}")
-    print(f"Lowest prediction: {lowest_prediction} on {lowest_date}")
-
     return model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy
+
 
 def mean_absolute_percentage_error(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+
 
 def predict_future(model, scaler, scaled_data, future_days, stock):
     data_for_prediction = scaled_data[-(future_days + 60):]
@@ -186,6 +187,7 @@ def predict_future(model, scaler, scaled_data, future_days, stock):
     print(f'Prediction Harga terendah: {lowest_prediction} pada tanggal {min_price_date.strftime("%Y-%m-%d")}')
 
     return highest_prediction, lowest_prediction, max_price_date, min_price_date
+
 
 # Set up End and Start times for data grab
 end = datetime.now()
@@ -527,8 +529,22 @@ def engine_main(stock):
         update_query = text("UPDATE tb_emiten SET status = :status WHERE kode_emiten = :stock")
         session.execute(update_query, {'status': 1, 'stock': stock})
         session.commit()
-        print("Commit success")
+        print("Commit Status success")
     except Exception as e:
         print(f"Commit error: {str(e)}")
+        
+    start_date = df_copy['date'].min()
+    end_date = df_copy['date'].max()
+
+    # Get the current date
+    scrape_date = datetime.now().date()
+    try:
+        update_query = text("UPDATE tb_emiten SET start_date = :start_date, end_date = :end_date, scrape_date = :scrape_date WHERE id_emiten = :id_emiten")
+        session.execute(update_query, {'start_date': start_date, 'end_date': end_date, 'scrape_date': scrape_date, 'id_emiten': stock_id})
+        session.commit()
+        print("Commit Price success")
+    except Exception as e:
+        print(f"Commit error: {str(e)}")
+        
         
 
