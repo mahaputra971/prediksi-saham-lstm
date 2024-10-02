@@ -76,25 +76,40 @@ def predict_with_loaded_model(stock, start_date, end_date):
     # Make predictions
     predictions = model.predict(x_test)
     predictions = scaler.inverse_transform(predictions)
+    
+    # + Calculate the difference between the last actual price and the first prediction
+    last_actual_price = company_df['Close'].values[-1]
+    first_prediction = predictions[0][0]
+    difference = last_actual_price - first_prediction
+    
+    # Adjust all predictions by the difference
+    adjusted_predictions = predictions + difference
 
     # Calculate evaluation metrics
     actual = company_df['Close'].values[-len(predictions):]
-    mae = mean_absolute_error(actual, predictions)
-    mse = mean_squared_error(actual, predictions)
-    rmse = np.sqrt(mse)
-    mape = mean_absolute_percentage_error(actual, predictions)
+    # mae = mean_absolute_error(actual, predictions)
+    # mse = mean_squared_error(actual, predictions)
+    # rmse = np.sqrt(mse)
+    # mape = mean_absolute_percentage_error(actual, predictions)
 
-    # Plot the predictions
+    # / Plot the predictions
     plt.figure(figsize=(16, 6))
     plt.title(f'Predicted Close Price for {stock} from {start_date} to {end_date}')
     plt.xlabel('Date', fontsize=18)
     plt.ylabel('Close Price IDR', fontsize=18)
-    plt.plot(company_df.index[-len(predictions):], predictions, color='r', label='Predicted Price')
-    plt.plot(company_df.index[-len(predictions):], actual, color='b', label='Actual Price')
+    # Plot the predictions
+    plt.plot(company_df.index[-len(adjusted_predictions):], adjusted_predictions, color='r', label='Predicted Price')
+    plt.plot(company_df.index[-len(adjusted_predictions):], actual, color='b', label='Actual Price')
     plt.legend()
     plot_path = f"/static/predictions/{stock}_{start_date}_to_{end_date}_{datetime.now().timestamp()}.png"
     plt.savefig(f"app{plot_path}")
     plt.close()
+    
+    # + Calculate evaluation metrics with adjusted predictions
+    mae = mean_absolute_error(actual, adjusted_predictions)
+    mse = mean_squared_error(actual, adjusted_predictions)
+    rmse = np.sqrt(mse)
+    mape = mean_absolute_percentage_error(actual, adjusted_predictions)
 
     # Print evaluation metrics
     print(f'\nMean Absolute Error (MAE): {mae}')
@@ -102,12 +117,22 @@ def predict_with_loaded_model(stock, start_date, end_date):
     print(f'Root Mean Squared Error (RMSE): {rmse}')
     print(f'Mean Absolute Percentage Error (MAPE): {mape}%')
     
-    # Find the highest and lowest prices
-    highest_price = np.max(predictions)
-    lowest_price = np.min(predictions)
+    # # Find the highest and lowest prices
+    # highest_price = np.max(predictions)
+    # lowest_price = np.min(predictions)
+    # # Find the dates when the highest and lowest prices occur
+    # highest_price_date = company_df.index[-len(predictions) + np.argmax(predictions)]
+    # lowest_price_date = company_df.index[-len(predictions) + np.argmin(predictions)]
+    # # Print the highest and lowest prices and their corresponding dates
+    # print(f'Highest Price: {highest_price} IDR on {highest_price_date}')
+    # print(f'Lowest Price: {lowest_price} IDR on {lowest_price_date}')
+    
+    # + Find the highest and lowest prices
+    highest_price = np.max(adjusted_predictions)
+    lowest_price = np.min(adjusted_predictions)
     # Find the dates when the highest and lowest prices occur
-    highest_price_date = company_df.index[-len(predictions) + np.argmax(predictions)]
-    lowest_price_date = company_df.index[-len(predictions) + np.argmin(predictions)]
+    highest_price_date = company_df.index[-len(adjusted_predictions) + np.argmax(adjusted_predictions)]
+    lowest_price_date = company_df.index[-len(adjusted_predictions) + np.argmin(adjusted_predictions)]
     # Print the highest and lowest prices and their corresponding dates
     print(f'Highest Price: {highest_price} IDR on {highest_price_date}')
     print(f'Lowest Price: {lowest_price} IDR on {lowest_price_date}')
@@ -123,8 +148,79 @@ def predict_with_loaded_model(stock, start_date, end_date):
         "Highest Price Date": highest_price_date,
         "Lowest Price Date": lowest_price_date
     }, plot_path
+    
+def forcasting_stock2(stock, future_days):
+    # Mengunduh data historis saham
+    data = yf.download(stock)
+    data = data.filter(['Close'])
+    dataset = data.values
 
-def predict_future(stock, future_days):
+    # Scaling dataset menggunakan MinMaxScaler
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaled_data = scaler.fit_transform(dataset)
+
+    # Mengecek apakah data cukup untuk mendukung prediksi
+    if len(scaled_data) < 60:
+        raise ValueError("Tidak cukup data historis untuk memprediksi.")
+
+    # Menggunakan data terakhir dari dataset untuk memulai prediksi
+    last_60_days = scaled_data[-60:]
+
+    # Menyiapkan input data untuk prediksi
+    x_future = []
+    x_future.append(last_60_days)
+
+    x_future = np.array(x_future)
+    x_future = np.reshape(x_future, (x_future.shape[0], x_future.shape[1], 1))
+
+    # Memuat model dari direktori
+    model = load_model_from_directory(f'LSTM Model for {stock}')
+    if model is None:
+        print(f"Model untuk saham {stock} tidak ditemukan.")
+        return None, None
+
+    future_predictions = []
+
+    # Loop untuk memprediksi harga setiap hari
+    for i in range(future_days):
+        prediction = model.predict(x_future)
+        future_predictions.append(prediction[0, 0])
+        
+        # Update input untuk prediksi hari berikutnya
+        new_input = np.append(x_future[0, 1:], prediction, axis=0)
+        x_future = np.reshape(new_input, (1, new_input.shape[0], 1))
+
+    # Denormalisasi prediksi
+    future_predictions = scaler.inverse_transform(np.array(future_predictions).reshape(-1, 1))
+
+    # Membuat tanggal prediksi
+    future_dates = pd.date_range(datetime.now() + timedelta(days=1), periods=future_days, freq='D')
+
+    # Plot hasil prediksi
+    plt.figure(figsize=(16, 6))
+    plt.title(f'Predicted Close Price for the Next {future_days} Days')
+    plt.xlabel('Date', fontsize=18)
+    plt.ylabel('Close Price IDR', fontsize=18)
+    plt.plot(future_dates, future_predictions, color='r', label='Predicted Price')
+    plt.legend()
+    plot_path = f"/static/predictions/{stock}_future_{future_days}_days_{datetime.now().timestamp()}.png"
+    plt.savefig(f"app{plot_path}")
+    plt.close()
+
+    # Menampilkan prediksi harga tertinggi dan terendah
+    highest_prediction = future_predictions.max()
+    lowest_prediction = future_predictions.min()
+    max_price_date = future_dates[future_predictions.argmax()]
+    min_price_date = future_dates[future_predictions.argmin()]
+
+    print(f'Harga tertinggi yang diprediksi: {highest_prediction} pada {max_price_date.strftime("%Y-%m-%d")}')
+    print(f'Harga terendah yang diprediksi: {lowest_prediction} pada {min_price_date.strftime("%Y-%m-%d")}')
+    
+    predictions = (highest_prediction, lowest_prediction, max_price_date, min_price_date)
+    
+    return predictions, plot_path  
+
+def forcasting_stock(stock, future_days):
     data = yf.download(stock)
     data = data.filter(['Close'])
     dataset = data.values
@@ -150,13 +246,6 @@ def predict_future(stock, future_days):
         print(f"Stock ID for {stock} not found.")
         return None, None
 
-    # Get model ID dynamically
-    # model_id = get_model_id_by_emiten(stock_id)
-    # if model_id is None:
-    #     print(f"Model ID for emiten {stock_id} not found.")
-    #     return None, None 
-    
-    # model = load_model_from_db(model_id)
     model = load_model_from_directory(f'LSTM Model for {stock}')
     if model is None:
         print(f"Model with ID {stock} could not be loaded.")
@@ -165,25 +254,33 @@ def predict_future(stock, future_days):
     future_predictions = model.predict(x_future)
     future_predictions = scaler.inverse_transform(future_predictions)
 
+    # Calculate the difference between the last actual price and the first prediction
+    last_actual_price = dataset[-1][0]
+    first_prediction = future_predictions[0][0]
+    difference = last_actual_price - first_prediction
+
+    # Adjust all predictions by the difference
+    adjusted_predictions = future_predictions + difference
+
     future_dates = pd.date_range(datetime.now() + timedelta(days=1), periods=future_days, freq='D')
 
     plt.figure(figsize=(16, 6))
     plt.title(f'Predicted Close Price for the Next {future_days} Days')
     plt.xlabel('Date', fontsize=18)
     plt.ylabel('Close Price IDR', fontsize=18)
-    plt.plot(future_dates, future_predictions, color='r', label='Predicted Price')
+    plt.plot(future_dates, adjusted_predictions, color='r', label='Predicted Price')
     plt.legend()
     plot_path = f"/static/predictions/{stock}_future_{future_days}_days_{datetime.now().timestamp()}.png"
     plt.savefig(f"app{plot_path}")
     plt.close()
 
-    print(future_predictions)
+    print(adjusted_predictions)
 
-    highest_prediction = future_predictions.max()
-    lowest_prediction = future_predictions.min()
+    highest_prediction = adjusted_predictions.max()
+    lowest_prediction = adjusted_predictions.min()
 
-    max_price_date = future_dates[future_predictions.argmax()]
-    min_price_date = future_dates[future_predictions.argmin()]
+    max_price_date = future_dates[adjusted_predictions.argmax()]
+    min_price_date = future_dates[adjusted_predictions.argmin()]
 
     print(f'Prediction Harga tertinggi: {highest_prediction} pada tanggal {max_price_date.strftime("%Y-%m-%d")}')
     print(f'Prediction Harga terendah: {lowest_prediction} pada tanggal {min_price_date.strftime("%Y-%m-%d")}')
@@ -191,6 +288,8 @@ def predict_future(stock, future_days):
     predictions = (highest_prediction, lowest_prediction, max_price_date, min_price_date)
 
     return predictions, plot_path
+
+
 
 def ichimoku_predict(stock, specific_date): 
     # Mengambil data Ichimoku dari database
@@ -257,8 +356,8 @@ def ichimoku_predict(stock, specific_date):
 import logging
 
 # Configuring logging
-def train_and_evaluate_model(stock, start_date, end_date, future_date, window_size=60):
-    future_date = future_date + timedelta(days=35)
+def train_and_evaluate_model2(stock, start_date, end_date, future_date, window_size=60):
+    future_date = future_date 
     
     # Mendownload data saham
     df = yf.download(stock)
@@ -324,17 +423,44 @@ def train_and_evaluate_model(stock, start_date, end_date, future_date, window_si
     x_test, y_test = np.array(x_test), np.array(y_test)
     x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
 
-    # Lakukan prediksi
+    # Lakukan prediksi///
     predictions = model.predict(x_test)
     predictions = scaler.inverse_transform(predictions.reshape(-1, 1))
     y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
+    
+    # + Inisialisasi extended_scaled_test_data dengan scaled_test_data
+    extended_scaled_test_data = list(scaled_test_data.flatten())
+
+    # Lakukan prediksi pada window_size hari terakhir dari extended_scaled_test_data dan tambahkan prediksi tersebut ke extended_scaled_test_data
+    for _ in range(window_size):
+        last_window = np.array(extended_scaled_test_data[-window_size:]).reshape((1, window_size, 1))
+        prediction = model.predict(last_window)
+        extended_scaled_test_data.append(prediction[0, 0])
+
+    # Buat x_test dan y_test dari extended_scaled_test_data seperti sebelumnya
+    x_test, y_test = [], []
+    for i in range(window_size, len(extended_scaled_test_data)):
+        x_test.append(extended_scaled_test_data[i-window_size:i])
+        y_test.append(extended_scaled_test_data[i])
+
+    x_test, y_test = np.array(x_test), np.array(y_test)
+    x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+
+    # Lakukan prediksi pada x_test dan simpan hasilnya dalam predictions
+    predictions = model.predict(x_test)
+    predictions = scaler.inverse_transform(predictions.reshape(-1, 1))
+
+    # Gunakan predictions untuk membuat valid
+    valid = data.loc[end_date_dt + timedelta(days=1):future_date_dt + timedelta(days=window_size)]
+    predictions = predictions[:len(valid)]
+    valid['Predictions'] = predictions
 
     # Data validasi
-    valid = data.loc[end_date_dt + timedelta(days=1):future_date_dt]
+    # valid = data.loc[end_date_dt + timedelta(days=1):future_date_dt]
 
     # Pastikan valid mencakup seluruh periode hingga future_date_dt
-    valid = valid[:len(predictions)]
-    valid['Predictions'] = predictions
+    # valid = valid[:len(predictions)]
+    # valid['Predictions'] = predictions
 
     print(f"len(predictions): {len(predictions)}")
     print(f"len(valid): {len(valid)}")
@@ -388,7 +514,208 @@ def train_and_evaluate_model(stock, start_date, end_date, future_date, window_si
     logger.info(f"MAPE: {mape}")
     
     accuracy = (mae, mse, rmse, mape)
+    
+    # Periksa panjang scaled_test_data
+    print(f"Panjang scaled_test_data: {len(scaled_test_data)}")
 
+    # Menyiapkan data pengujian
+    x_test, y_test = [], []
+    for i in range(window_size, len(scaled_test_data)):
+        x_test.append(scaled_test_data[i-window_size:i, 0])
+        y_test.append(scaled_test_data[i, 0])
+
+    # Konversi ke array numpy
+    x_test, y_test = np.array(x_test), np.array(y_test)
+
+    # Periksa panjang x_test dan y_test
+    print(f"Panjang x_test: {len(x_test)}")
+    print(f"Panjang y_test: {len(y_test)}")
+
+    # Jika diperlukan, periksa beberapa sampel dari x_test dan y_test
+    print(f"Contoh x_test[0]: {x_test[0]}")
+    print(f"Contoh y_test[0]: {y_test[0]}")
+    
+    # Cek apakah ada missing data
+    missing_data = data.isnull().sum()
+
+    # Tampilkan jumlah missing data
+    print("Missing data per kolom:\n", missing_data)
+
+    # Tampilkan tanggal yang memiliki missing data
+    print("Tanggal dengan missing data:\n", data[data.isnull().any(axis=1)])
+
+    return accuracy, plot_path, plot_path_2, valid
+
+def train_and_evaluate_model3(stock, start_date, end_date, future_date, window_size=60):
+    # Mendownload data saham
+    df = yf.download(stock)
+    data = df.filter(['Close'])
+
+    # Menghapus baris yang mengandung NaN dan mengisi NaN
+    data.dropna(inplace=True)
+    
+    # Mengisi NaN dengan metode interpolasi
+    data['Close'] = data['Close'].interpolate(method='linear')
+
+    # Konversi tanggal ke datetime
+    start_date_dt = pd.to_datetime(start_date)
+    end_date_dt = pd.to_datetime(end_date)
+    future_date_dt = pd.to_datetime(future_date)
+
+    # Validasi input tanggal
+    if start_date_dt < data.index.min():
+        raise ValueError(f"Start date {start_date} is earlier than the oldest available data date {data.index.min().strftime('%Y-%m-%d')}.")
+    if end_date_dt < start_date_dt:
+        raise ValueError("End date must be after the start date.")
+    if (data.index.max() - timedelta(days=window_size)) < end_date_dt:
+        raise ValueError(f"End date must be at least {window_size} days before the latest data date {data.index.max().strftime('%Y-%m-%d')}.")
+    if future_date_dt > data.index.max():
+        raise ValueError(f"Future date {future_date} is beyond the latest available data date {data.index.max().strftime('%Y-%m-%d')}.")
+
+    logger.info(f"Data range from {start_date_dt} to {future_date_dt}")
+
+    # Memisahkan data pelatihan dan pengujian
+    train_data = data.loc[start_date_dt:end_date_dt]
+    test_data = data.loc[end_date_dt - timedelta(days=window_size):future_date_dt]
+
+    # Normalisasi data
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaled_train_data = scaler.fit_transform(train_data)
+    scaled_test_data = scaler.transform(test_data)
+
+    logger.info(f"Scaled train data shape: {scaled_train_data.shape}")
+    logger.info(f"Scaled test data shape: {scaled_test_data.shape}")
+
+    # Membuat dataset pelatihan
+    x_train, y_train = [], []
+    for i in range(window_size, len(scaled_train_data)):
+        x_train.append(scaled_train_data[i-window_size:i, 0])
+        y_train.append(scaled_train_data[i, 0])
+
+    x_train, y_train = np.array(x_train), np.array(y_train)
+    x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+
+    # Membangun model LSTM
+    model = Sequential()
+    model.add(LSTM(128, return_sequences=True, input_shape=(x_train.shape[1], 1)))
+    model.add(LSTM(64, return_sequences=False))
+    model.add(Dense(25))
+    model.add(Dense(1))
+
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    model.fit(x_train, y_train, batch_size=1, epochs=5)  # Meningkatkan jumlah epoch
+
+    logger.info("Model training completed")
+
+    # Menyiapkan data pengujian
+    x_test, y_test = [], []
+    for i in range(window_size, len(scaled_test_data)):
+        x_test.append(scaled_test_data[i-window_size:i, 0])
+        y_test.append(scaled_test_data[i, 0])
+
+    x_test, y_test = np.array(x_test), np.array(y_test)
+    x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+
+    # Lakukan prediksi
+    predictions = model.predict(x_test)
+    predictions = scaler.inverse_transform(predictions.reshape(-1, 1))
+    y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
+
+    # Hitung jumlah hari untuk prediksi tambahan
+    additional_days = (future_date_dt - end_date_dt).days
+    additional_predictions = []
+
+    print(f"Additional days needed for predictions: {additional_days}")
+
+    # Prediksi berulang untuk memperpanjang prediksi hingga future_date
+    last_x_test = x_test[-1]
+
+    for _ in range(additional_days):
+        next_pred = model.predict(last_x_test.reshape(1, window_size, 1))
+        additional_predictions.append(next_pred[0][0])
+        last_x_test = np.append(last_x_test[1:], next_pred)
+
+    # Konversi prediksi tambahan ke skala asli
+    additional_predictions = scaler.inverse_transform(np.array(additional_predictions).reshape(-1, 1))
+
+    # Gabungkan prediksi asli dan prediksi tambahan
+    full_predictions = additional_predictions
+
+    print(f"Length of predictions: {len(predictions)}")  # Tetap ada untuk referensi
+    print(f"Length of additional predictions: {len(additional_predictions)}")
+    print(f"Total length of full_predictions: {len(full_predictions)}")
+
+    # Data validasi dari end_date_dt hingga future_date_dt
+    valid_index = pd.date_range(start=end_date_dt + timedelta(days=1), end=future_date_dt)
+    valid = pd.DataFrame(index=valid_index)
+
+    # Pastikan `valid` memiliki panjang yang sama dengan `full_predictions`
+    valid['Close'] = data.loc[end_date_dt + timedelta(days=1):future_date_dt]['Close'].reindex(valid_index)
+    
+    # Ambil bagian akhir dari full_predictions yang sesuai dengan panjang valid
+    valid['Predictions'] = full_predictions  # Gunakan full_predictions yang baru
+
+    # Pastikan panjang valid dan prediksi sama
+    if len(full_predictions) != len(valid):
+        valid = valid.iloc[:len(full_predictions)]  # Sesuaikan panjang valid
+
+    print(f"Length of valid DataFrame: {len(valid)}")
+    print(f"Length of valid Predictions: {len(valid['Predictions'])}")
+
+    print(f"len(full_predictions): {len(full_predictions)}")
+    print(f"len(valid): {len(valid)}")
+    if len(full_predictions) != len(valid):
+        raise ValueError(f"Mismatch in lengths: full_predictions({len(full_predictions)}), valid({len(valid)})")
+
+    # Mengisi NaN jika ada di valid['Close']
+    valid['Close'] = valid['Close'].ffill()
+
+    # Menyiapkan data untuk plotting
+    print(valid)
+
+    # Plot data
+    plt.figure(figsize=(16, 6))
+    plt.title('Model Training and Predictions')
+    plt.xlabel('Date', fontsize=18)
+    plt.ylabel('Close Price IDR', fontsize=18)
+    plt.plot(data.loc[start_date_dt:end_date_dt]['Close'], label='Train', color='blue')
+    plt.plot(valid['Close'], label='Val')
+    plt.plot(valid['Predictions'], label='Predictions')
+    plt.legend(loc='lower right')
+
+    plot_path = f"/static/predictions/{stock}_lstm_start_{start_date}_end_{end_date}_future_{future_date}_{datetime.now().timestamp()}.png"
+    plt.savefig(f"app{plot_path}")
+    plt.close()
+
+    logger.info(f"Plot saved to {plot_path}")
+
+    plt.figure(figsize=(16, 6))
+    plt.title('Model Training and Predictions')
+    plt.xlabel('Date', fontsize=18)
+    plt.ylabel('Close Price IDR', fontsize=18)
+    plt.plot(valid['Close'], label='Val')
+    plt.plot(valid['Predictions'], label='Predictions')
+    plt.legend(loc='lower right')
+
+    plot_path_2 = f"/static/predictions/{stock}_lstm_end_{end_date}_future_{future_date}_{datetime.now().timestamp()}.png"
+    plt.savefig(f"app{plot_path_2}")
+    plt.close()
+
+    logger.info(f"Plot saved to {plot_path_2}")
+
+    # Evaluasi model
+    mae = mean_absolute_error(valid['Close'], valid['Predictions'])
+    mse = mean_squared_error(valid['Close'], valid['Predictions'])
+    rmse = np.sqrt(mse)
+    mape = mean_absolute_percentage_error(valid['Close'], valid['Predictions'])
+
+    logger.info(f"MAE: {mae}")
+    logger.info(f"MSE: {mse}")
+    logger.info(f"RMSE: {rmse}")
+    logger.info(f"MAPE: {mape}")
+
+    accuracy = (mae, mse, rmse, mape)
+    
     return accuracy, plot_path, plot_path_2, valid
 
 # Logging configuration
