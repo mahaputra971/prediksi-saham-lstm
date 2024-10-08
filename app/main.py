@@ -1514,7 +1514,7 @@ def lstm_accuracy_table(emiten_name: str) -> List[Any]:
     return [
         c.Page(
             components=[
-                c.Heading(text=f'Ichimoku Accuracy {emiten_name}', level=2),
+                c.Heading(text=f'LSTM Accuracy {emiten_name}', level=2),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),

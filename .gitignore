@@ -12,3 +12,4 @@ model
 **/*.png
 *.env
 .env
+dbexport.sql
