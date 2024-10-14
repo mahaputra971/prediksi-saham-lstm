@@ -72,7 +72,7 @@ def job():
     print(f"The program took {elapsed_time} seconds to run.")
 
 def main():
-    # Schedule the job to run at 12:00 PM every day
+    # Schedule the job to run at 19:00 PM every day
     schedule.every().day.at("19:00").do(job) 
 
     # Keep the script running
