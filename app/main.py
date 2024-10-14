@@ -236,6 +236,7 @@ async def home() -> List[AnyComponent]:
 async def submit_emiten_form(emiten_name: str = Form(...)):
     # Convert emiten_name to uppercase
     emiten_name = emiten_name.upper()
+    emiten_name = emiten_name.strip()
 
     # If emiten_name does not end with ".JK", append ".JK" to it
     if not emiten_name.endswith(".JK"):
