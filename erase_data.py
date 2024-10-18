@@ -34,3 +34,12 @@ try:
     print("Success erase data")
 except Exception as e:
     print(f"Commit ERROR: {str(e)}")
+    
+# Set the 'start_date', 'end_date', and 'scrape_date' columns in 'tb_emiten' to NULL for all data rows
+try:
+    update_query = text("UPDATE tb_emiten SET start_date = NULL, end_date = NULL, scrape_date = NULL")
+    session.execute(update_query)
+    session.commit()
+    print("Success update data in tb_emiten for 'start_date', 'end_date', and 'scrape_date' to NULL")
+except Exception as e:
+    print(f"Commit ERROR: {str(e)}")
