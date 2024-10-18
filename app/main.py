@@ -192,12 +192,9 @@ class PredicValid(BaseModel):
     
 class LSTMAccuracy(BaseModel): 
     kode_emiten: str 
-    day: float 
-    week: float 
-    month: float
-    quarter: float
-    half_year: float
-    year: float
+    mean_gap: float 
+    highest_gap: float 
+    lowest_gap: float
     date: date
     
 class Recommendation(BaseModel): 
@@ -596,6 +593,7 @@ def detail_emiten_table(emiten_name: str, current_page: int = 1, page_size: int 
         c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
         c.Button(text='Previous', on_click=GoToEvent(url=f'/detail_emiten_prev/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
         c.Button(text='Next', on_click=GoToEvent(url=f'/detail_emiten_next/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Heading(text=f'Deskripsi : Pada page ini berisi data lengkap data yang digunakan untuk melakukan pengolahan data pada prediksi menggunakan LSTM dan teknikal Ichimoku Cloud', level=6),
         c.Table(
             data=detail_emiten,
             columns=[
@@ -610,6 +608,7 @@ def detail_emiten_table(emiten_name: str, current_page: int = 1, page_size: int 
             ],
         ),
         c.Heading(text=f'Page {current_page}', level=6),
+        c.Button(text='Full Data (No Pagination)', on_click=GoToEvent(url=f'/detail_emiten/{emiten_name}'), named_style='secondary', class_name='ms-2'),
     ]
 
     components_without_next = [
@@ -709,6 +708,7 @@ def ichimoku_data_table(emiten_name: str) -> List[Any]:
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Heading(text=f'Deskripsi : Pada page ini berisi data perhitungan lengkap untuk prediksi teknikal Ichimoku Cloud', level=6),
                 c.Table(
                     data=ichimoku_data,
                     columns=[
@@ -814,6 +814,7 @@ def update_ichimoku_data(emiten_name: str, current_page: int = 1, page_size: int
         c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
         c.Button(text='Previous', on_click=GoToEvent(url=f'/ichimoku_data_prev/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
         c.Button(text='Next', on_click=GoToEvent(url=f'/ichimoku_data_next/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Heading(text=f'Deskripsi : Pada page ini berisi data perhitungan lengkap untuk prediksi teknikal Ichimoku Cloud', level=6),
         c.Table(
             data=ichimoku_data,
             columns=[
@@ -826,6 +827,7 @@ def update_ichimoku_data(emiten_name: str, current_page: int = 1, page_size: int
             ],
         ),
         c.Heading(text=f'Page {current_page}', level=6),
+        c.Button(text='All Data (No Pagination)', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
     ]
 
     components_without_next = [
@@ -845,6 +847,7 @@ def update_ichimoku_data(emiten_name: str, current_page: int = 1, page_size: int
             ],
         ),
         c.Heading(text=f'Page {current_page}', level=6),
+        c.Button(text='All Data (No Pagination)', on_click=GoToEvent(url=f'/ichimoku_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
     ]
 
     return [
@@ -876,6 +879,7 @@ def error_metrics_table(emiten_name: str) -> List[Any]:
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_error_metrics/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Heading(text=f'Deskripsi : Pada page ini berisi data hasil akurasi dari prediksi akurasi LSTM yang telah dijalankan ', level=6),
                 c.Table(
                     data=lstm_data,
                     columns=[
@@ -916,7 +920,7 @@ def update_error_metrics(emiten_name: str) -> List[Any]:
             if historical_data.empty:
                 print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
             else:
-                model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy = train_and_evaluate_model(historical_data, emiten_name)
+                model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy, gap = train_and_evaluate_model(historical_data, emiten_name)
 
                 historical_df = historical_data.reset_index()
                 print(historical_df.tail())
@@ -966,6 +970,7 @@ def prediction (emiten_name: str) -> List[Any]:
                 c.Button(text='update data', on_click=GoToEvent(url=f'/update_prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Heading(text=f'Deskripsi : Pada page ini berisi data hasil prediksi harga tertinggi dan terendah beserta tanggal perkiraan terjadinya dengan LSTM', level=6),
                 c.Table(
                     data=tb_prediction_lstm,
                     columns=[
@@ -1020,7 +1025,7 @@ def update_prediction(emiten_name: str) -> List[Any]:
             if historical_data.empty:
                 print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
             else:
-                model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy = train_and_evaluate_model(historical_data, emiten_name)
+                model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy, gap = train_and_evaluate_model(historical_data, emiten_name)
                 # Setting up for future predictions
                 future_prediction_period = int(len(scaled_data) * 0.1)
                 max_price, min_price, max_price_date, min_price_date = predict_future(model, scaler, scaled_data, future_prediction_period, emiten_name)
@@ -1071,6 +1076,7 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Heading(text=f'Deskripsi : Pada page ini berisi data hasil status prediksi dari perhitungan Ichimoku Cloud', level=6),
                 c.Table(
                     data=ichimoku_status_data,
                     columns=[
@@ -1142,6 +1148,7 @@ def charts_table(emiten_name: str) -> List[Any]:
             components=[
                 c.Heading(text=f'Charts {emiten_name}', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Heading(text=f'Deskripsi : Pada page ini berisi data gambar summary dari visualisasi data penting dari tiap page', level=6),
                 c.Table(
                     data=emiten_chart,
                     columns=[
@@ -1278,6 +1285,7 @@ def ichimoku_status_table(emiten_name: str) -> List[Any]:
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_ichimoku_accuracy/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Heading(text=f'Deskripsi : Pada page ini berisi data hasil Akurasi dari prediksi teknikal Ichimoku Cloud', level=6),
                 c.Table(
                     data=accuracy_ichimoku_cloud,
                     columns=[
@@ -1519,16 +1527,14 @@ def lstm_accuracy_table(emiten_name: str) -> List[Any]:
                 c.Heading(text=f'From {earliest_date} To {latest_date}', level=6),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
                 c.Button(text='Update Data', on_click=GoToEvent(url=f'/update_lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Heading(text=f'Deskripsi : Pada page ini berisi data accuracy detail untuk prediksi akurasi tertinggi, terendah dan rata - rata', level=6),
                 c.Table(
                     data=accuracy_lstm,
                     columns=[
                         DisplayLookup(field='kode_emiten'),
-                        DisplayLookup(field='day'),
-                        DisplayLookup(field='week'),
-                        DisplayLookup(field='month'),
-                        DisplayLookup(field='quarter'),
-                        DisplayLookup(field='half_year'),
-                        DisplayLookup(field='year'),
+                        DisplayLookup(field='mean_gap'),
+                        DisplayLookup(field='highest_gap'),
+                        DisplayLookup(field='lowest_gap'),
                         DisplayLookup(field='date', mode=DisplayMode.date),
                     ],
                 ),
@@ -1563,7 +1569,7 @@ def update_lstm_accuracy_data(emiten_name: str) -> List[Any]:
             if historical_data.empty:
                 print(f"No new data found for {emiten_name}. Data might not be available or the ticker might be delisted.")
             else:
-                model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy = train_and_evaluate_model(historical_data, emiten_name)
+                model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy, gap = train_and_evaluate_model(historical_data, emiten_name)
                 valid_reset = valid.reset_index()
 
                 historical_df = historical_data.reset_index()
@@ -1573,28 +1579,14 @@ def update_lstm_accuracy_data(emiten_name: str) -> List[Any]:
                 stock_id = get_emiten_id(emiten_name)
 
                 # Calculate the accuracy of the price predictions
-                accuracy_price_prediction_1_day = 100 - abs((valid_reset['Predictions'][0] - valid_reset['Close'][0]) / valid_reset['Close'][0] * 100) if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) and pd.notnull(valid_reset['Close'][0]) else None
-                # Calculate the mean accuracy of the price predictions for a week
-                accuracy_price_prediction_1_week = 100 - abs((valid_reset['Predictions'][1:7] - valid_reset['Close'][1:7]) / valid_reset['Close'][1:7] * 100).mean() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][1:7]).any() and pd.notnull(valid_reset['Close'][1:7]).any() else None
-                # Calculate the mean accuracy of the price predictions for a month
-                accuracy_price_prediction_1_month = 100 - abs((valid_reset['Predictions'][1:30] - valid_reset['Close'][1:30]) / valid_reset['Close'][1:30] * 100).mean() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][1:30]).any() and pd.notnull(valid_reset['Close'][1:30]).any() else None  
-                # Calculate the mean accuracy of the price predictions for a quarter
-                accuracy_price_prediction_1_quarter = 100 - abs((valid_reset['Predictions'][1:90] - valid_reset['Close'][1:90]) / valid_reset['Close'][1:90] * 100).mean() if len(valid_reset['Predictions']) > 89 and pd.notnull(valid_reset['Predictions'][1:90]).any() and pd.notnull(valid_reset['Close'][1:90]).any() else None
-                # Calculate the mean accuracy of the price predictions for a half year
-                accuracy_price_prediction_1_half_year = 100 - abs((valid_reset['Predictions'][1:180] - valid_reset['Close'][1:180]) / valid_reset['Close'][1:180] * 100).mean() if len(valid_reset['Predictions']) > 179 and pd.notnull(valid_reset['Predictions'][1:180]).any() and pd.notnull(valid_reset['Close'][1:180]).any() else None  
-                # Calculate the mean accuracy of the price predictions for a year
-                accuracy_price_prediction_1_year = 100 - abs((valid_reset['Predictions'][1:360] - valid_reset['Close'][1:360]) / valid_reset['Close'][1:360] * 100).mean() if len(valid_reset['Predictions']) > 359 and pd.notnull(valid_reset['Predictions'][1:360]).any() and pd.notnull(valid_reset['Close'][1:360]).any() else None  
+                highest_gap, lowest_gap, mean_gap = gap
                 
-                date_save = datetime.now().strftime('%d-%m-%Y')
                 data_accuracy_lstm = {
                     'id_emiten': stock_id,
-                    'day': accuracy_price_prediction_1_day,
-                    'week': accuracy_price_prediction_1_week,
-                    'month': accuracy_price_prediction_1_month,
-                    'quarter': accuracy_price_prediction_1_quarter,
-                    'half_year': accuracy_price_prediction_1_half_year,
-                    'year': accuracy_price_prediction_1_year,
-                    'date': date_save
+                    'mean_gap': mean_gap,
+                    'highest_gap': highest_gap,
+                    'lowest_gap': lowest_gap,
+                    'date': datetime.now().strftime('%d-%m-%Y')
                 }
                 insert_data_analyst('tb_accuracy_lstm', data_accuracy_lstm)
                 
@@ -1641,6 +1633,7 @@ def emiten_recommendation():
             components=[
                 c.Heading(text='Emiten Recommendation', level=2),
                 c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
+                c.Heading(text=f'Deskripsi : Pada page ini berisi data rekomendasi saham sesuai rekomendasi dari perhitungan prediksi LSTM dan Ichimoku Cloud\n', level=6),
                 c.Heading(text='Grade 1', level=6),
                 c.Table(
                     data=data_1,

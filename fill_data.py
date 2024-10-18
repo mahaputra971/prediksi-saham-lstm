@@ -26,11 +26,6 @@ import integrations
 importlib.reload(integrations)
 from integrations import ichimoku_project, ichimoku_sql, pembuktian_ichimoku, get_emiten_id, insert_data_analyst, save_model_to_db, load_model_from_db, get_model_id_by_emiten, save_model_to_directory, load_model_from_directory
 
-# Setup the SQLAlchemy engine and session
-# engine = create_engine('mysql+pymysql://mahaputra971:mahaputra971@localhost:3306/technical_stock_ta_db')
-# Session = sessionmaker(bind=engine)
-# session = Session()
-
 from dotenv import load_dotenv
 import os
 
@@ -51,7 +46,13 @@ for i in range(len(data_kode)):
 print(f"panjang kode : {len(data_kode)}, panjang Nama: {len(data_nama)}")
 
 def fetch_stock_data(stock_list, start, end):
-    data = {stock: yf.download(stock, start, end) for stock in stock_list}
+    data = {}
+    for stock in stock_list:
+        stock_data = yf.download(stock, start, end)
+        if stock_data.empty:
+            print(f"Error: No data found for stock {stock}. Skipping...")
+            continue
+        data[stock] = stock_data
     return data
 
 def plot_stock_data(company, column, xlabel, ylabel, title, folder_name, stock):
@@ -132,16 +133,36 @@ def train_and_evaluate_model(df, stock_name):
     mape = mean_absolute_percentage_error(valid['Close'], valid['Predictions'])
     print(f'Mean Absolute Percentage Error (MAPE): {mape}%')
 
-    highest_prediction = valid['Close'].max()
-    lowest_prediction = valid['Close'].min()
+    highest_prediction = valid['Predictions'].max()
+    lowest_prediction = valid['Predictions'].min()
 
-    highest_date = valid['Close'].idxmax()
-    lowest_date = valid['Close'].idxmin()
+    highest_date = valid['Predictions'].idxmax()
+    lowest_date = valid['Predictions'].idxmin()
 
     print(f"Highest prediction: {highest_prediction} on {highest_date}")
     print(f"Lowest prediction: {lowest_prediction} on {lowest_date}")
+    
+    # Menghitung gap dalam persen antara harga prediksi dan aktual
+    valid['Gap'] = abs((valid['Predictions'] - valid['Close']) / valid['Close'] * 100)
 
-    return model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid
+    # Mencari gap tertinggi, terendah, dan rata-rata
+    highest_gap = valid['Gap'].max()
+    lowest_gap = valid['Gap'].min()
+    mean_gap = valid['Gap'].mean()
+    
+    if len(valid['Predictions']) > 0 and valid['Predictions'].notnull().all() and valid['Close'].notnull().all():
+        accuracy_series = 100 - abs((valid['Predictions'] - valid['Close']) / valid['Close'] * 100)
+        accuracy = accuracy_series.mean()  # Mengambil rata-rata dari seluruh nilai accuracy
+    else:
+        accuracy = None
+
+    print(f'Highest gap: {highest_gap}%')
+    print(f'Lowest gap: {lowest_gap}%')
+    print(f'Mean gap: {mean_gap}%')
+    
+    gap = [highest_gap, lowest_gap, mean_gap]
+
+    return model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy, gap
 
 def mean_absolute_percentage_error(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
@@ -195,12 +216,6 @@ def predict_with_loaded_model(stock, start_date, end_date):
     if stock_id is None:
         print(f"Stock ID for {stock} not found.")
         return
-
-    # Get model ID dynamically
-    # model_id = get_model_id_by_emiten(stock_id)
-    # if model_id is None:
-    #     print(f"Model ID for emiten {stock_id} not found.")
-    #     return
 
     # Fetch stock data
     data = fetch_stock_data([stock], start_date, end_date)
@@ -278,254 +293,234 @@ def predict_with_loaded_model(stock, start_date, end_date):
     print(f'\nHighest actual price: {highest_price} on {highest_date}')
     print(f'Lowest actual price: {lowest_price} on {lowest_date}')
 
-    # Usage example
-    # stock = 'BELI.JK'  # Replace with the stock ticker
-    # start_date = '2023-03-01'  # Replace with the start date for the prediction
-    # end_date = '2023-07-31'  # Replace with the end date for the prediction
-
-    # predict_with_loaded_model(stock, start_date, end_date)
-
 # Process each stock separately
 def engine_main(stock, stock_name):
     print(f"Processing stock: {stock}")
     
     # Fetch stock data
-    data = yf.download(stock)
-    
-    if data.empty:
-        print(f"Stock {stock} not found in data.")
-        return None
-    
-    company_df = data
-    
-    # Summary Stats and General Info
-    print(company_df.describe())
-    print(company_df.info())
-
-    # Plotting historical adjusted closing price
-    plot_stock_data(company_df, 'Adj Close', 'Adj Close', None, f'Closing Price of {stock_name}', 'adj_closing_price', stock)
-
-    # Plotting sales volume
-    plot_stock_data(company_df, 'Volume', 'Volume', None, f'Sales Volume of {stock_name}', 'sales_volume', stock)
-
-    # Getting historical data for the past 100 years
-    historical_start = datetime.now() - relativedelta(years=100)
-    historical_data = fetch_stock_data([stock], historical_start, datetime.now())
-    historical_df = historical_data[stock]
-    print(historical_df.tail())
-
-    # Plotting historical closing price
-    plot_stock_data(historical_df, 'Close', 'Date', f'Close Price IDR {stock_name}', 'Close Price History', 'close_price_history', stock)
-
-    # Training and evaluating the model
-    model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid = train_and_evaluate_model(historical_df, stock)
-    
-    # Menyimpan model ke database
-    stock_id = get_emiten_id(stock)
-    model_name = f'LSTM Model for {stock}'
-    algorithm = 'LSTM'
-    hyperparameters = model.get_config()
-    metrics = {
-        'mae': mae,
-        'mse': mse,
-        'rmse': rmse,
-        'mape': mape
-    }
-    # save_model_to_db(model, stock_id, model_name, algorithm, hyperparameters, metrics)
-    save_model_to_directory(model, stock_id, model_name, algorithm, hyperparameters, metrics)
-
-    # Setting up for future predictions
-    future_prediction_period = int(len(scaled_data) * 0.1)
-
-    # Predicting future prices
-    max_price, min_price, max_price_date, min_price_date = predict_future(model, scaler, scaled_data, future_prediction_period, stock)
-
-    # BUAT LOGIC UNTUK TAMBAHIN KE DATABASE
-
-    # id for fk in insert
-    stock_id = get_emiten_id(stock)
-
-    # Save data to table 'tb_detail_emiten'
-    df_copy = historical_df.reset_index()
-    df_copy['id_emiten'] = stock_id
-    df_copy = df_copy.rename(columns={
-        'Date': 'date',
-        'Open': 'open',
-        'High': 'high',
-        'Low': 'low',
-        'Close': 'close',
-        'Adj Close': 'close_adj',
-        'Volume': 'volume'
-    })
-    # Convert pandas Timestamp objects to datetime.datetime objects
-    df_copy['date'] = df_copy['date'].apply(lambda x: x.to_pydatetime().strftime('%Y-%m-%d'))
-    insert_data_analyst("tb_detail_emiten", df_copy)
-
-    data_lstm = {
-        'id_emiten': stock_id,
-        'RMSE': rmse,
-        'MAPE': mape,
-        'MAE': mae,
-        'MSE': mse,
-        'date': datetime.now().strftime("%Y-%m-%d")
-    }
-    insert_data_analyst("tb_lstm", data_lstm)
-
-    # Call the ichimoku_project function
-    data_ic, sen_status, span_status = ichimoku_sql(stock)
-    data_ic = pd.DataFrame(data_ic)
-    data_ic['id_emiten'] = stock_id
-    insert_data_analyst('tb_data_ichimoku_cloud', data_ic)
-
-    data_ic_status = {
-        'id_emiten': stock_id,
-        'sen_status': sen_status,
-        'span_status': span_status,
-        'date': datetime.now().strftime("%Y-%m-%d")
-    }
-    insert_data_analyst('tb_ichimoku_status', data_ic_status)
-
-    # Save data to table 'tb_prediction_lstm'
-    data_prediction_lstm = {
-        'id_emiten': stock_id,
-        'max_price': max_price,
-        'min_price': min_price,
-        'max_price_date': max_price_date.strftime("%Y-%m-%d"),
-        'min_price_date': min_price_date.strftime("%Y-%m-%d"),
-        'date': datetime.now().strftime("%Y-%m-%d")
-    }
-    insert_data_analyst('tb_prediction_lstm', data_prediction_lstm)
-
-    # Save data to table 'tb_lstm_summary'
-    #f'picture/{folder_name}/{stock}.png'
-    date_save = datetime.now().strftime("%Y-%m-%d")
-    img_closing_price = Image.open(f'picture/adj_closing_price/{stock}.png')
-    img_sales_volume = Image.open(f'picture/sales_volume/{stock}.png')
-    img_price_history = Image.open(f'picture/close_price_history/{stock}.png')
-    img_comparation = Image.open(f'picture/accuracy/{stock}.png')
-    img_prediction = Image.open(f'picture/prediction/{stock}.png')
-    img_ichimoku_cloud = Image.open(f'picture/ichimoku/{stock}.png')
-    data_summary = {
-        'id_emiten': stock_id,
-        'pic_closing_price': img_closing_price,
-        'pic_sales_volume': img_sales_volume, 
-        'pic_price_history': img_price_history,
-        'pic_comparation': img_comparation,
-        'pic_prediction': img_prediction,
-        'pic_ichimoku_cloud': img_ichimoku_cloud,
-        'render_date': date_save
-    }
-    insert_data_analyst('tb_summary', data_summary)
-
-    # Save data to table 'tb_accuracy_ichimoku_cloud'
-    tren_1hari_sen, tren_1minggu_sen, tren_1bulan_sen = pembuktian_ichimoku(stock, 'sen')
-    tren_1hari_span, tren_1minggu_span, tren_1bulan_span = pembuktian_ichimoku(stock, 'span')
-
-    percent_1_hari_sen = pd.Series(tren_1hari_sen).mean() * 100
-    percent_1_minggu_sen = pd.Series(tren_1minggu_sen).mean() * 100
-    percent_1_bulan_sen = pd.Series(tren_1bulan_sen).mean() * 100
-
-    percent_1_hari_span = pd.Series(tren_1hari_span).mean() * 100
-    percent_1_minggu_span = pd.Series(tren_1minggu_span).mean() * 100
-    percent_1_bulan_span = pd.Series(tren_1bulan_span).mean() * 100
-
-    print(f"Accuracy tren 1 hari SEN: {percent_1_hari_sen}%")
-    print(f"Accuracy tren 1 minggu SEN: {percent_1_minggu_sen}%")
-    print(f"Accuracy tren 1 bulan SEN: {percent_1_bulan_sen}%")
-
-    print(f"\nAccuracy tren 1 hari SPAN: {percent_1_hari_span}%")
-    print(f"Accuracy tren 1 minggu SPAN: {percent_1_minggu_span}%")
-    print(f"Accuracy tren 1 bulan SPAN: {percent_1_bulan_span}%")
-    data_accuracy_ichimoku = {
-        'id_emiten': stock_id,
-        'percent_1_hari_sen': percent_1_hari_sen,
-        'percent_1_minggu_sen': percent_1_minggu_sen,
-        'percent_1_bulan_sen': percent_1_bulan_sen,
-        'percent_1_hari_span': percent_1_hari_span,
-        'percent_1_minggu_span': percent_1_minggu_span,
-        'percent_1_bulan_span': percent_1_bulan_span,
-        'date': date_save
-    }
-    insert_data_analyst('tb_accuracy_ichimoku_cloud', data_accuracy_ichimoku)
-    
-    # Save data to table 'tb_prediction_lstm_data'
-    # Reset the index of the valid DataFrame to make the dates a column
-    valid_reset = valid.reset_index()
-    # Select and rename the columns to match the table schema   
-    data_to_insert = valid_reset[['Date', 'Close', 'Predictions']].rename(columns={
-        'Date': 'date',
-        'Close': 'validation_price',
-        'Predictions': 'prediction_price'
-    })
-    # Add the id_emiten column
-    data_to_insert['id_emiten'] = stock_id  
-    data_to_insert['date_render'] = datetime.now().strftime('%Y-%m-%d')
-    # Call the insert_data_analyst function 
-    insert_data_analyst('tb_prediction_lstm_data', data_to_insert)
-
-    # # Get the price predictions
-    # price_prediction_1_day = valid_reset['Predictions'][0] if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) else None
-    # price_prediction_1_week = valid_reset['Predictions'][6] if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][6]) else None
-    # price_prediction_1_month = valid_reset['Predictions'][29] if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][29]) else None
-
-    # # Get the high price predictions
-    # high_price_prediction_1_day = price_prediction_1_day
-    # high_price_prediction_1_week = valid_reset['Predictions'][0:7].max() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][0:7].max()) else None
-    # high_price_prediction_1_month = valid_reset['Predictions'][0:30].max() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][0:30].max()) else None
-
-    # Calculate the accuracy of the price predictions
-    accuracy_price_prediction_1_day = 100 - abs((valid_reset['Predictions'][0] - valid_reset['Close'][0]) / valid_reset['Close'][0] * 100) if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) and pd.notnull(valid_reset['Close'][0]) else None
-    # Calculate the mean accuracy of the price predictions for a week
-    accuracy_price_prediction_1_week = 100 - abs((valid_reset['Predictions'][1:7] - valid_reset['Close'][1:7]) / valid_reset['Close'][1:7] * 100).mean() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][1:7]).any() and pd.notnull(valid_reset['Close'][1:7]).any() else None
-    # Calculate the mean accuracy of the price predictions for a month
-    accuracy_price_prediction_1_month = 100 - abs((valid_reset['Predictions'][1:30] - valid_reset['Close'][1:30]) / valid_reset['Close'][1:30] * 100).mean() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][1:30]).any() and pd.notnull(valid_reset['Close'][1:30]).any() else None  
-    # Calculate the mean accuracy of the price predictions for a quarter
-    accuracy_price_prediction_1_quarter = 100 - abs((valid_reset['Predictions'][1:90] - valid_reset['Close'][1:90]) / valid_reset['Close'][1:90] * 100).mean() if len(valid_reset['Predictions']) > 89 and pd.notnull(valid_reset['Predictions'][1:90]).any() and pd.notnull(valid_reset['Close'][1:90]).any() else None
-    # Calculate the mean accuracy of the price predictions for a half year
-    accuracy_price_prediction_1_half_year = 100 - abs((valid_reset['Predictions'][1:180] - valid_reset['Close'][1:180]) / valid_reset['Close'][1:180] * 100).mean() if len(valid_reset['Predictions']) > 179 and pd.notnull(valid_reset['Predictions'][1:180]).any() and pd.notnull(valid_reset['Close'][1:180]).any() else None  
-    # Calculate the mean accuracy of the price predictions for a year
-    accuracy_price_prediction_1_year = 100 - abs((valid_reset['Predictions'][1:360] - valid_reset['Close'][1:360]) / valid_reset['Close'][1:360] * 100).mean() if len(valid_reset['Predictions']) > 359 and pd.notnull(valid_reset['Predictions'][1:360]).any() and pd.notnull(valid_reset['Close'][1:360]).any() else None  
-    
-    data_accuracy_lstm = {
-        'id_emiten': stock_id,
-        'day': accuracy_price_prediction_1_day,
-        'week': accuracy_price_prediction_1_week,
-        'month': accuracy_price_prediction_1_month,
-        'quarter': accuracy_price_prediction_1_quarter,
-        'half_year': accuracy_price_prediction_1_half_year,
-        'year': accuracy_price_prediction_1_year,
-        'date': date_save
-    }
-    insert_data_analyst('tb_accuracy_lstm', data_accuracy_lstm)
-    
-    # print("Price predictions:")
-    # print("1 day: ", price_prediction_1_day)
-    # print("1 week: ", price_prediction_1_week)
-    # print("1 month: ", price_prediction_1_month)
-
-    # print("\nHigh price predictions:")
-    # print("1 day: ", high_price_prediction_1_day)
-    # print("1 week: ", high_price_prediction_1_week)
-    # print("1 month: ", high_price_prediction_1_month)
-
-    print("\nAccuracy of price predictions:")
-    print("1 day: ", accuracy_price_prediction_1_day)
-    print("1 week: ", accuracy_price_prediction_1_week)
-    print("1 month: ", accuracy_price_prediction_1_month)
-    print("1 quarter: ", accuracy_price_prediction_1_quarter)
-    print("1 half year: ", accuracy_price_prediction_1_half_year)
-    print("1 year: ", accuracy_price_prediction_1_year)
-    
-        
-    # Set the 'status' column in 'tb_emiten' to '1' for the given stock
     try:
-        update_query = text("UPDATE tb_emiten SET status = :status WHERE kode_emiten = :stock")
-        session.execute(update_query, {'status': 1, 'stock': stock})
-        session.commit()
-        print("Commit success")
-    except Exception as e:
-        print(f"Commit error: {str(e)}")
+        data = yf.download(stock)
+        
+        # Check if the data is empty
+        if data.empty:
+            print(f"Error: No data found for stock {stock}. Skipping to the next stock...")
+            return None  # Skip to the next stock
+        
+        company_df = data
+        
+        # Summary Stats and General Info
+        print(company_df.describe())
+        print(company_df.info())
 
+        # (Continue with the rest of your code for processing the stock...)
+        # Plotting historical adjusted closing price
+        plot_stock_data(company_df, 'Adj Close', 'Adj Close', None, f'Closing Price of {stock_name}', 'adj_closing_price', stock)
+
+        # Plotting sales volume
+        plot_stock_data(company_df, 'Volume', 'Volume', None, f'Sales Volume of {stock_name}', 'sales_volume', stock)
+
+        # Getting historical data for the past 100 years
+        historical_start = datetime.now() - relativedelta(years=100)
+        historical_data = fetch_stock_data([stock], historical_start, datetime.now())
+        historical_df = historical_data[stock]
+        print(historical_df.tail())
+
+        # Plotting historical closing price
+        plot_stock_data(historical_df, 'Close', 'Date', f'Close Price IDR {stock_name}', 'Close Price History', 'close_price_history', stock)
+
+        # Training and evaluating the model
+        model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy, gap = train_and_evaluate_model(historical_df, stock)
+        
+        # Menyimpan model ke database
+        stock_id = get_emiten_id(stock)
+        model_name = f'LSTM Model for {stock}'
+        algorithm = 'LSTM'
+        hyperparameters = model.get_config()
+        metrics = {
+            'mae': mae,
+            'mse': mse,
+            'rmse': rmse,
+            'mape': mape,
+        }
+        print(metrics)
+        # save_model_to_db(model, stock_id, model_name, algorithm, hyperparameters, metrics)
+        save_model_to_directory(model, stock_id, model_name, algorithm, hyperparameters, metrics)
+
+        # Setting up for future predictions
+        future_prediction_period = int(len(scaled_data) * 0.1)
+
+        # Predicting future prices
+        max_price, min_price, max_price_date, min_price_date = predict_future(model, scaler, scaled_data, future_prediction_period, stock)
+
+        # BUAT LOGIC UNTUK TAMBAHIN KE DATABASE
+
+        # id for fk in insert
+        stock_id = get_emiten_id(stock)
+
+        # Save data to table 'tb_detail_emiten'
+        df_copy = historical_df.reset_index()
+        df_copy['id_emiten'] = stock_id
+        df_copy = df_copy.rename(columns={
+            'Date': 'date',
+            'Open': 'open',
+            'High': 'high',
+            'Low': 'low',
+            'Close': 'close',
+            'Adj Close': 'close_adj',
+            'Volume': 'volume'
+        })
+        # Convert pandas Timestamp objects to datetime.datetime objects
+        df_copy['date'] = df_copy['date'].apply(lambda x: x.to_pydatetime().strftime('%Y-%m-%d'))
+        insert_data_analyst("tb_detail_emiten", df_copy)
+
+        data_lstm = {
+            'id_emiten': stock_id,
+            'RMSE': rmse,
+            'MAPE': mape,
+            'MAE': mae,
+            'MSE': mse,
+            'accuracy' : accuracy,
+            'date': datetime.now().strftime("%Y-%m-%d")
+        }
+        insert_data_analyst("tb_lstm", data_lstm)
+
+        # Call the ichimoku_project function
+        data_ic, sen_status, span_status = ichimoku_sql(stock)
+        data_ic = pd.DataFrame(data_ic)
+        data_ic['id_emiten'] = stock_id
+        insert_data_analyst('tb_data_ichimoku_cloud', data_ic)
+
+        data_ic_status = {
+            'id_emiten': stock_id,
+            'sen_status': sen_status,
+            'span_status': span_status,
+            'date': datetime.now().strftime("%Y-%m-%d")
+        }
+        insert_data_analyst('tb_ichimoku_status', data_ic_status)
+
+        # Save data to table 'tb_prediction_lstm'
+        data_prediction_lstm = {
+            'id_emiten': stock_id,
+            'max_price': max_price,
+            'min_price': min_price,
+            'max_price_date': max_price_date.strftime("%Y-%m-%d"),
+            'min_price_date': min_price_date.strftime("%Y-%m-%d"),
+            'date': datetime.now().strftime("%Y-%m-%d")
+        }
+        insert_data_analyst('tb_prediction_lstm', data_prediction_lstm)
+
+        # Save data to table 'tb_lstm_summary'
+        #f'picture/{folder_name}/{stock}.png'
+        date_save = datetime.now().strftime("%Y-%m-%d")
+        img_closing_price = Image.open(f'picture/adj_closing_price/{stock}.png')
+        img_sales_volume = Image.open(f'picture/sales_volume/{stock}.png')
+        img_price_history = Image.open(f'picture/close_price_history/{stock}.png')
+        img_comparation = Image.open(f'picture/accuracy/{stock}.png')
+        img_prediction = Image.open(f'picture/prediction/{stock}.png')
+        img_ichimoku_cloud = Image.open(f'picture/ichimoku/{stock}.png')
+        data_summary = {
+            'id_emiten': stock_id,
+            'pic_closing_price': img_closing_price,
+            'pic_sales_volume': img_sales_volume, 
+            'pic_price_history': img_price_history,
+            'pic_comparation': img_comparation,
+            'pic_prediction': img_prediction,
+            'pic_ichimoku_cloud': img_ichimoku_cloud,
+            'render_date': date_save
+        }
+        insert_data_analyst('tb_summary', data_summary)
+
+        # Save data to table 'tb_accuracy_ichimoku_cloud'
+        tren_1hari_sen, tren_1minggu_sen, tren_1bulan_sen = pembuktian_ichimoku(stock, 'sen')
+        tren_1hari_span, tren_1minggu_span, tren_1bulan_span = pembuktian_ichimoku(stock, 'span')
+
+        percent_1_hari_sen = pd.Series(tren_1hari_sen).mean() * 100
+        percent_1_minggu_sen = pd.Series(tren_1minggu_sen).mean() * 100
+        percent_1_bulan_sen = pd.Series(tren_1bulan_sen).mean() * 100
+
+        percent_1_hari_span = pd.Series(tren_1hari_span).mean() * 100
+        percent_1_minggu_span = pd.Series(tren_1minggu_span).mean() * 100
+        percent_1_bulan_span = pd.Series(tren_1bulan_span).mean() * 100
+
+        print(f"Accuracy tren 1 hari SEN: {percent_1_hari_sen}%")
+        print(f"Accuracy tren 1 minggu SEN: {percent_1_minggu_sen}%")
+        print(f"Accuracy tren 1 bulan SEN: {percent_1_bulan_sen}%")
+
+        print(f"\nAccuracy tren 1 hari SPAN: {percent_1_hari_span}%")
+        print(f"Accuracy tren 1 minggu SPAN: {percent_1_minggu_span}%")
+        print(f"Accuracy tren 1 bulan SPAN: {percent_1_bulan_span}%")
+        data_accuracy_ichimoku = {
+            'id_emiten': stock_id,
+            'percent_1_hari_sen': percent_1_hari_sen,
+            'percent_1_minggu_sen': percent_1_minggu_sen,
+            'percent_1_bulan_sen': percent_1_bulan_sen,
+            'percent_1_hari_span': percent_1_hari_span,
+            'percent_1_minggu_span': percent_1_minggu_span,
+            'percent_1_bulan_span': percent_1_bulan_span,
+            'date': date_save
+        }
+        insert_data_analyst('tb_accuracy_ichimoku_cloud', data_accuracy_ichimoku)
+        
+        # Save data to table 'tb_prediction_lstm_data'
+        # Reset the index of the valid DataFrame to make the dates a column
+        valid_reset = valid.reset_index()
+        # Select and rename the columns to match the table schema   
+        data_to_insert = valid_reset[['Date', 'Close', 'Predictions']].rename(columns={
+            'Date': 'date',
+            'Close': 'validation_price',
+            'Predictions': 'prediction_price'
+        })
+        # Add the id_emiten column
+        data_to_insert['id_emiten'] = stock_id  
+        data_to_insert['date_render'] = datetime.now().strftime('%Y-%m-%d')
+        # Call the insert_data_analyst function 
+        insert_data_analyst('tb_prediction_lstm_data', data_to_insert)
+
+        # Calculate the accuracy of the price predictions
+        highest_gap, lowest_gap, mean_gap = gap
+        
+        data_accuracy_lstm = {
+            'id_emiten': stock_id,
+            'mean_gap': mean_gap,
+            'highest_gap': highest_gap,
+            'lowest_gap': lowest_gap,
+            'date': date_save
+        }
+        insert_data_analyst('tb_accuracy_lstm', data_accuracy_lstm)
+
+        print("\nAccuracy of price predictions:")
+        print("mean_gap: ", mean_gap)
+        print("highest_gap: ", highest_gap)
+        print("lowest_gap: ", lowest_gap)
+        print("Save Data: ", date_save)
+            
+        # Set the 'status' column in 'tb_emiten' to '1' for the given stock
+        try:
+            update_query = text("UPDATE tb_emiten SET status = :status WHERE kode_emiten = :stock")
+            session.execute(update_query, {'status': 1, 'stock': stock})
+            session.commit()
+            print("Commit Status success")
+        except Exception as e:
+            print(f"Commit error: {str(e)}")
+            
+        start_date = df_copy['date'].min()
+        end_date = df_copy['date'].max()
+
+        # Get the current date
+        scrape_date = datetime.now().date()
+        try:
+            update_query = text("UPDATE tb_emiten SET start_date = :start_date, end_date = :end_date, scrape_date = :scrape_date WHERE id_emiten = :id_emiten")
+            session.execute(update_query, {'start_date': start_date, 'end_date': end_date, 'scrape_date': scrape_date, 'id_emiten': stock_id})
+            session.commit()
+            print("Commit Price success")
+        except Exception as e:
+            print(f"Commit error: {str(e)}")
+    
+    except Exception as e:
+        # Handle any other errors that may occur
+        print(f"An error occurred while processing stock {stock}: {str(e)}. Skipping to the next stock...")
+        return None  # Skip to the next stock
+        
 for kode, nama in zip(data_kode, data_nama):
     engine_main(kode, nama)
     print(f"Stock {kode} ({nama})has been processed.\n")

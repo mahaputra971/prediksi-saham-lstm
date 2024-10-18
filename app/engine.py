@@ -66,7 +66,7 @@ from tensorflow.keras.layers import Dropout
 def train_and_evaluate_model(df, stock_name):
     data = df.filter(['Close'])
     dataset = data.values
-    training_data_len = int(np.ceil(len(dataset) * .95))
+    training_data_len = int(np.ceil(len(dataset) * .90))
 
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled_data = scaler.fit_transform(dataset)
@@ -142,8 +142,22 @@ def train_and_evaluate_model(df, stock_name):
 
     highest_date = valid['Close'].idxmax()
     lowest_date = valid['Close'].idxmin()
+    
+    # Menghitung gap dalam persen antara harga prediksi dan aktual
+    valid_reset['Gap'] = abs((valid_reset['Predictions'] - valid_reset['Close']) / valid_reset['Close'] * 100)
 
-    return model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy
+    # Mencari gap tertinggi, terendah, dan rata-rata
+    highest_gap = valid_reset['Gap'].max()
+    lowest_gap = valid_reset['Gap'].min()
+    mean_gap = valid_reset['Gap'].mean()
+
+    print(f'Highest gap: {highest_gap}%')
+    print(f'Lowest gap: {lowest_gap}%')
+    print(f'Mean gap: {mean_gap}%')
+    
+    gap = [highest_gap, lowest_gap, mean_gap]
+
+    return model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy, gap
 
 
 def mean_absolute_percentage_error(y_true, y_pred):
@@ -323,7 +337,7 @@ def engine_main(stock):
     plot_stock_data(historical_df, 'Close', 'Date', f'Close Price IDR {stock}', 'Close Price History', 'close_price_history', stock)
 
     # Training and evaluating the model
-    model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy = train_and_evaluate_model(historical_df, stock)
+    model, scaler, scaled_data, training_data_len, mae, mse, rmse, mape, valid, accuracy, gap = train_and_evaluate_model(historical_df, stock)
     
     # Menyimpan model ke database
     stock_id = get_emiten_id(stock)
@@ -481,26 +495,13 @@ def engine_main(stock):
     # high_price_prediction_1_month = valid_reset['Predictions'][0:30].max() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][0:30].max()) else None
 
     # Calculate the accuracy of the price predictions
-    accuracy_price_prediction_1_day = 100 - abs((valid_reset['Predictions'][0] - valid_reset['Close'][0]) / valid_reset['Close'][0] * 100) if len(valid_reset['Predictions']) > 0 and pd.notnull(valid_reset['Predictions'][0]) and pd.notnull(valid_reset['Close'][0]) else None
-    # Calculate the mean accuracy of the price predictions for a week
-    accuracy_price_prediction_1_week = 100 - abs((valid_reset['Predictions'][1:7] - valid_reset['Close'][1:7]) / valid_reset['Close'][1:7] * 100).mean() if len(valid_reset['Predictions']) > 6 and pd.notnull(valid_reset['Predictions'][1:7]).any() and pd.notnull(valid_reset['Close'][1:7]).any() else None
-    # Calculate the mean accuracy of the price predictions for a month
-    accuracy_price_prediction_1_month = 100 - abs((valid_reset['Predictions'][1:30] - valid_reset['Close'][1:30]) / valid_reset['Close'][1:30] * 100).mean() if len(valid_reset['Predictions']) > 29 and pd.notnull(valid_reset['Predictions'][1:30]).any() and pd.notnull(valid_reset['Close'][1:30]).any() else None  
-    # Calculate the mean accuracy of the price predictions for a quarter
-    accuracy_price_prediction_1_quarter = 100 - abs((valid_reset['Predictions'][1:90] - valid_reset['Close'][1:90]) / valid_reset['Close'][1:90] * 100).mean() if len(valid_reset['Predictions']) > 89 and pd.notnull(valid_reset['Predictions'][1:90]).any() and pd.notnull(valid_reset['Close'][1:90]).any() else None
-    # Calculate the mean accuracy of the price predictions for a half year
-    accuracy_price_prediction_1_half_year = 100 - abs((valid_reset['Predictions'][1:180] - valid_reset['Close'][1:180]) / valid_reset['Close'][1:180] * 100).mean() if len(valid_reset['Predictions']) > 179 and pd.notnull(valid_reset['Predictions'][1:180]).any() and pd.notnull(valid_reset['Close'][1:180]).any() else None  
-    # Calculate the mean accuracy of the price predictions for a year
-    accuracy_price_prediction_1_year = 100 - abs((valid_reset['Predictions'][1:360] - valid_reset['Close'][1:360]) / valid_reset['Close'][1:360] * 100).mean() if len(valid_reset['Predictions']) > 359 and pd.notnull(valid_reset['Predictions'][1:360]).any() and pd.notnull(valid_reset['Close'][1:360]).any() else None  
+    highest_gap, lowest_gap, mean_gap = gap
     
     data_accuracy_lstm = {
         'id_emiten': stock_id,
-        'day': accuracy_price_prediction_1_day,
-        'week': accuracy_price_prediction_1_week,
-        'month': accuracy_price_prediction_1_month,
-        'quarter': accuracy_price_prediction_1_quarter,
-        'half_year': accuracy_price_prediction_1_half_year,
-        'year': accuracy_price_prediction_1_year,
+        'mean_gap': mean_gap,
+        'highest_gap': highest_gap,
+        'lowest_gap': lowest_gap,
         'date': date_save
     }
     insert_data_analyst('tb_accuracy_lstm', data_accuracy_lstm)
@@ -516,13 +517,10 @@ def engine_main(stock):
     # print("1 month: ", high_price_prediction_1_month)
 
     print("\nAccuracy of price predictions:")
-    print("1 day: ", accuracy_price_prediction_1_day)
-    print("1 week: ", accuracy_price_prediction_1_week)
-    print("1 month: ", accuracy_price_prediction_1_month)
-    print("1 quarter: ", accuracy_price_prediction_1_quarter)
-    print("1 half year: ", accuracy_price_prediction_1_half_year)
-    print("1 year: ", accuracy_price_prediction_1_year)
-    
+    print("mean_gap: ", mean_gap)
+    print("highest_gap: ", highest_gap)
+    print("lowest_gap: ", lowest_gap)
+    print("Save Data: ", date_save)
         
     # Set the 'status' column in 'tb_emiten' to '1' for the given stock
     try:
