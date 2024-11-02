@@ -221,7 +221,7 @@ def predict_future(model, scaler, scaled_data, future_days, stock):
     print(f'Prediction Harga tertinggi: {highest_prediction} pada tanggal {max_price_date.strftime("%Y-%m-%d")}')
     print(f'Prediction Harga terendah: {lowest_prediction} pada tanggal {min_price_date.strftime("%Y-%m-%d")}')
 
-    return highest_prediction, lowest_prediction, max_price_date, min_price_date
+    return highest_prediction, lowest_prediction, max_price_date, min_price_date, future_predictions, future_dates
 
 # Set up End and Start times for data grab
 end = datetime.now()
@@ -368,7 +368,7 @@ def engine_main(stock, stock_name):
         future_prediction_period = int(len(scaled_data) * 0.1)
 
         # Predicting future prices
-        max_price, min_price, max_price_date, min_price_date = predict_future(model, scaler, scaled_data, future_prediction_period, stock)
+        max_price, min_price, max_price_date, min_price_date, future_predictions, future_dates = predict_future(model, scaler, scaled_data, future_prediction_period, stock)
 
         # BUAT LOGIC UNTUK TAMBAHIN KE DATABASE
 
@@ -511,6 +511,21 @@ def engine_main(stock, stock_name):
         print("highest_gap: ", highest_gap)
         print("lowest_gap: ", lowest_gap)
         print("Save Data: ", date_save)
+        
+        # Ensure future_predictions and future_dates are 1-dimensional lists
+        future_predictions = [float(pred) for pred in future_predictions]
+        future_dates = [pd.to_datetime(date) for date in future_dates]
+        
+        # Create a DataFrame for future predictions
+        future_df = pd.DataFrame({
+            'id_emiten': [stock_id] * len(future_predictions),
+            'price': future_predictions,
+            'date': future_dates
+        })
+        # Convert future_dates to string format if necessary
+        future_df['date'] = future_df['date'].apply(lambda x: x.strftime('%Y-%m-%d'))
+        # Insert future predictions into the database
+        insert_data_analyst("tb_prediction_price_dump_data", future_df)
             
         # Set the 'status' column in 'tb_emiten' to '1' for the given stock
         try:

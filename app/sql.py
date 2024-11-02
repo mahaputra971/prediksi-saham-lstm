@@ -86,6 +86,7 @@ def get_issuer():
     data_name = []
     try:
         with engine.connect() as connection:
+            # query = text("SELECT kode_emiten, nama_emiten FROM tb_emiten WHERE status = 0")
             query = text("SELECT kode_emiten, nama_emiten FROM tb_emiten WHERE status = 0")
             result = connection.execute(query)
             for row in result:
@@ -299,7 +300,7 @@ def load_model_from_directory(model_name):
 def get_model_id_by_emiten(id_emiten):
     try:
         # Fetch the latest model_id for the given id_emiten
-        query = text("SELECT id_model FROM models WHERE id_emiten = :id_emiten ORDER BY created_at DESC")
+        query = text("SELECT id_model FROM models WHERE id_emiten = :id_emiten ORDER BY created_at DESC LIMIT 3")
         model_id = session.execute(query, {'id_emiten': id_emiten}).scalar()
         return model_id
     except Exception as e:

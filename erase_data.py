@@ -25,6 +25,7 @@ truncate_tables('tb_lstm')
 truncate_tables('tb_prediction_lstm')
 truncate_tables('tb_prediction_lstm_data')
 truncate_tables('tb_summary')
+truncate_tables('tb_prediction_price_dump_data')
 
 # Set the 'status' column in 'tb_emiten' to '1' for the given stock
 try:
