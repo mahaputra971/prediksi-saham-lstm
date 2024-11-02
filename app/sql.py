@@ -299,7 +299,7 @@ def load_model_from_directory(model_name):
 def get_model_id_by_emiten(id_emiten):
     try:
         # Fetch the latest model_id for the given id_emiten
-        query = text("SELECT id_model FROM models WHERE id_emiten = :id_emiten ORDER BY created_at DESC LIMIT 1")
+        query = text("SELECT id_model FROM models WHERE id_emiten = :id_emiten ORDER BY created_at DESC")
         model_id = session.execute(query, {'id_emiten': id_emiten}).scalar()
         return model_id
     except Exception as e:

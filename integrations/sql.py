@@ -245,7 +245,8 @@ def save_model_to_directory(model, id_emiten, name, algorithm, hyperparameters, 
     try:
         # Define the directory and filename
         directory = 'model'
-        filename = f'{name}.h5'
+        # filename = f'{name}.h5'
+        filename = f'{name}.keras'
 
         # Create the directory if it doesn't exist
         if not os.path.exists(directory):
@@ -263,7 +264,8 @@ def load_model_from_directory(model_name):
     try:
         # Define the directory and filename
         directory = 'model'
-        filename = f'{model_name}.h5'
+        # filename = f'{model_name}.h5'
+        filename = f'{model_name}.keras'
 
         # Check if the file exists
         if not os.path.exists(os.path.join(directory, filename)):

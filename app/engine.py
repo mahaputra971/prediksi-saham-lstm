@@ -171,6 +171,7 @@ def mean_absolute_percentage_error(y_true, y_pred):
 
 
 def predict_future(model, scaler, scaled_data, future_days, stock):
+    # emiten_id = get_emiten_id(stock)
     data_for_prediction = scaled_data[-(future_days + 60):]
     x_future = []
 
@@ -183,6 +184,18 @@ def predict_future(model, scaler, scaled_data, future_days, stock):
     future_predictions = model.predict(x_future)
     future_predictions = scaler.inverse_transform(future_predictions)
 
+    hist = yf.download(stock, period="1d")
+
+    if not hist.empty:
+        latest_close_price = hist['Close'].iloc[0]
+
+        # Adjust future_predictions if necessary
+        if future_predictions[0] != latest_close_price:
+            adjustment = latest_close_price - future_predictions[0]
+            future_predictions += adjustment
+    else:
+        print(f"No data found for ticker {stock}. Skipping to the next stock...")
+
     future_dates = pd.date_range(datetime.now() + timedelta(days=1), periods=future_days, freq='D')
 
     plt.figure(figsize=(16, 6))
@@ -190,7 +203,6 @@ def predict_future(model, scaler, scaled_data, future_days, stock):
     plt.xlabel('Date', fontsize=18)
     plt.ylabel('Close Price IDR', fontsize=18)
     plt.plot(future_dates, future_predictions)
-    # plt.savefig(f'picture/prediction/{future_dates[0].strftime("%Y-%m-%d")}_to_{future_dates[-1].strftime("%Y-%m-%d")}_future_predictions.png')
     plt.savefig(f'picture/prediction/{stock}.png')
     plt.close()
 
