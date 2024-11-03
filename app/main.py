@@ -1599,12 +1599,13 @@ def update_lstm_accuracy_data(emiten_name: str) -> List[Any]:
 @exception_handler
 @app.get("/api/recommendation", response_model=FastUI, response_model_exclude_none=True)
 def emiten_recommendation():
-    data_1, data_2, data_3 = fetch_emiten_recommendation()
+    data_1, data_2, data_3, data_4 = fetch_emiten_recommendation()
     
     # Convert lists to sets to remove duplicates
     data_1 = list(set(data_1))
     data_2 = list(set(data_2))
     data_3 = list(set(data_3))
+    data_4 = list(set(data_4))
 
     if len(data_1) == 0 : 
         data_1 = ['Kosong']
@@ -1612,7 +1613,9 @@ def emiten_recommendation():
         data_2 = ['Kosong']
     if len(data_3) == 0 : 
         data_3 = ['Kosong']
-    elif not data_1 and not data_2 and not data_3 :  # Check if data list is empty
+    if len(data_4) == 0 : 
+        data_4 = ['Kosong']
+    elif not data_1 and not data_2 and not data_3 and not data_4 :  # Check if data list is empty
         return [
             c.Page(
                 components=[
@@ -1627,7 +1630,8 @@ def emiten_recommendation():
     data_1 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_1]
     data_2 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_2]
     data_3 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_3]
-
+    data_4 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_4]
+    
     return [
         c.Page(
             components=[
@@ -1651,6 +1655,13 @@ def emiten_recommendation():
                 c.Heading(text='Recommendation IChimoku Cloud', level=6),
                 c.Table(
                     data=data_3,
+                    columns=[
+                        DisplayLookup(field='kode_emiten'),
+                    ],
+                ),
+                c.Heading(text='Recommendation Return >5%', level=6),
+                c.Table(
+                    data=data_4,
                     columns=[
                         DisplayLookup(field='kode_emiten'),
                     ],

@@ -361,7 +361,25 @@ def fetch_emiten_recommendation():
             data_3 = [row[0] for row in result_3]
             print(f'The Recommendation : {data_3}')
             
-            return data_1, data_2, data_3
+            #BUAT QUERY UNTUK SELECT 5% 
+            query_grade_4 = text("""
+                WITH latest_price AS (
+                    SELECT close
+                    FROM tb_detail_emiten
+                    WHERE date = (SELECT MAX(date) FROM tb_detail_emiten)
+                    LIMIT 1
+                )
+                SELECT tb_emiten.kode_emiten
+                FROM tb_emiten
+                JOIN tb_prediction_price_dump_data ON tb_emiten.id_emiten = tb_prediction_price_dump_data.id_emiten
+                JOIN latest_price ON 1=1
+                WHERE (tb_prediction_price_dump_data.price - latest_price.close) / latest_price.close >= 0.05
+            """)
+            result_4 = connection.execute(query_grade_4)
+            data_4 = [row[0] for row in result_4]
+            print(f'The Recommendation : {data_4}')
+            
+            return data_1, data_2, data_3, data_4
     except Exception as e:
         print("An error occurred:", e)
         return None
