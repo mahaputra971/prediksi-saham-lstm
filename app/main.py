@@ -1681,6 +1681,47 @@ def prediction_price_dump_data_next_page(emiten_name: str, current_page: int):
 @app.get("/api/prediction_price_dump_data_prev/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
 def prediction_price_dump_data_prev_page(emiten_name: str, current_page: int) -> RedirectResponse:
     return RedirectResponse(url=f"/api/prediction_price_dump_data/{emiten_name}/{max(1, current_page - 1)}")
+
+
+@exception_handler
+@app.get("/api/prediction_price_dump_data/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
+def detail_emiten_table(emiten_name: str) -> List[Any]:
+    prediction_price_dump_data = get_table_data(emiten_name, 'tb_prediction_price_dump_data')
+    prediction_price_dump_data = [PredictionPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in prediction_price_dump_data]
+
+    # Convert the 'date' field to datetime objects if they are strings
+    for item in prediction_price_dump_data:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in prediction_price_dump_data)
+    latest_date = max(item.date for item in prediction_price_dump_data)
+
+    # Run This if i want to click update button
+    # update_detail_emiten(latest_date, emiten_name, detail_emiten)
+
+    # Convert 'date' fields back to strings if needed before returning
+    for item in prediction_price_dump_data:
+        if isinstance(item.date, datetime):
+            item.date = item.date.strftime('%d-%m-%Y')
+            
+    return [
+        c.Page(
+            components=[
+                c.Heading(text=f'Prediction Price Dump Data {emiten_name}', level=2),
+                c.Heading(text=f'From {earliest_date.strftime("%Y-%m-%d")} To {latest_date.strftime("%Y-%m-%d")}', level=6),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+                c.Table(
+                    data=prediction_price_dump_data,
+                    columns=[
+                        DisplayLookup(field='price'),
+                        DisplayLookup(field='date', mode=DisplayMode.date),
+            ],
+        ),
+            ]
+        ),
+    ]
     
 @exception_handler
 @app.get("/api/recommendation", response_model=FastUI, response_model_exclude_none=True)
