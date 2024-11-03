@@ -197,6 +197,11 @@ class LSTMAccuracy(BaseModel):
     lowest_gap: float
     date: date
     
+class PredictionPriceResponse(BaseModel):
+    price: float
+    date: date
+    kode_emiten: str
+    
 class Recommendation(BaseModel): 
     kode_emiten: str
     date: date
@@ -260,6 +265,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                         c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                         c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                         c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                        c.Button(text='Prediction Dump Data', on_click=GoToEvent(url=f'/prediction_price_dump_data/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
                     ]
                 ),
                 c.Div(
@@ -324,6 +330,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                     c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                     c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                     c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                    c.Button(text='Prediction Dump Data', on_click=GoToEvent(url=f'/prediction_price_dump_data/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
                 ]
             ),
             c.Div(
@@ -467,6 +474,7 @@ def navigation(emiten_name: str) -> List[Any]:
                 c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Prediction Dump Data', on_click=GoToEvent(url=f'/prediction_price_dump_data/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
             ]
         ),  
         c.Page(
@@ -517,6 +525,7 @@ def navigation(emiten_name: str) -> List[Any]:
                 c.Button(text='Summary', on_click=GoToEvent(url=f'/charts/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Prediction LSTM', on_click=GoToEvent(url=f'/prediction/{emiten_name}'), named_style='secondary', class_name='ms-2'),
                 c.Button(text='Accuracy LSTM', on_click=GoToEvent(url=f'/lstm_accuracy_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+                c.Button(text='Prediction Dump Data', on_click=GoToEvent(url=f'/prediction_price_dump_data/{emiten_name}/1'), named_style='secondary', class_name='ms-2'),
             ]
         ),  
         c.Page(
@@ -1595,6 +1604,83 @@ def update_lstm_accuracy_data(emiten_name: str) -> List[Any]:
 
     return RedirectResponse(url=f"/api/lstm_accuracy_data/{emiten_name}")
 
+@exception_handler
+@app.get("/api/prediction_price_dump_data/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
+def prediction_price_dump_data_table(emiten_name: str, current_page: int = 1, page_size: int = 10) -> List[Any]:
+    prediction_price_dump_data = get_table_data(emiten_name, 'tb_prediction_price_dump_data')
+    prediction_price_dump_data = [PredictionPriceResponse(**{**item, 'kode_emiten': emiten_name}) for item in prediction_price_dump_data]
+
+    # Convert the 'date' field to datetime objects if they are strings
+    for item in prediction_price_dump_data:
+        if isinstance(item.date, str):
+            item.date = datetime.strptime(item.date, '%Y-%m-%d')  # adjust the format string as per your date format
+
+    # Fetch the earliest and latest date
+    earliest_date = min(item.date for item in prediction_price_dump_data)
+    latest_date = max(item.date for item in prediction_price_dump_data)
+
+    # Convert 'date' fields back to strings if needed before returning
+    for item in prediction_price_dump_data:
+        if isinstance(item.date, datetime):
+            item.date = item.date.strftime('%d-%m-%Y')
+            
+    total_pages = len(prediction_price_dump_data) // page_size
+    if len(prediction_price_dump_data) % page_size > 0:
+        total_pages += 1
+
+    # Pagination
+    start = (current_page - 1) * page_size
+    end = start + page_size
+    prediction_price_dump_data = prediction_price_dump_data[start:end]
+
+    components_with_next = [
+        c.Heading(text=f'Prediction Price Dump Data {emiten_name}', level=2),
+        c.Heading(text=f'From {earliest_date.strftime("%Y-%m-%d")} To {latest_date.strftime("%Y-%m-%d")}', level=6),
+        c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+        c.Button(text='Previous', on_click=GoToEvent(url=f'/prediction_price_dump_data_prev/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Button(text='Next', on_click=GoToEvent(url=f'/prediction_price_dump_data_next/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Table(
+            data=prediction_price_dump_data,
+            columns=[
+                DisplayLookup(field='price'),
+                DisplayLookup(field='date', mode=DisplayMode.date),
+            ],
+        ),
+        c.Heading(text=f'Page {current_page}', level=6),
+        c.Button(text='Full Data (No Pagination)', on_click=GoToEvent(url=f'/prediction_price_dump_data/{emiten_name}'), named_style='secondary', class_name='ms-2'),
+    ]
+
+    components_without_next = [
+        c.Heading(text=f'Prediction Price Dump Data {emiten_name}', level=2),
+        c.Heading(text=f'From {earliest_date.strftime("%Y-%m-%d")} To {latest_date.strftime("%Y-%m-%d")}', level=6),
+        c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/navigation/{emiten_name}')),
+        c.Button(text='Previous', on_click=GoToEvent(url=f'/prediction_price_dump_data_prev/{emiten_name}/{current_page}'), named_style='secondary', class_name='ms-2'),
+        c.Table(
+            data=prediction_price_dump_data,
+            columns=[
+                DisplayLookup(field='price'),
+                DisplayLookup(field='date', mode=DisplayMode.date),
+            ],
+        ),
+        c.Heading(text=f'Page {current_page}', level=6),
+    ]
+
+    return [
+        c.Page(
+            components=components_with_next if current_page < total_pages else components_without_next
+        ),
+    ]
+
+@exception_handler
+@app.get("/api/prediction_price_dump_data_next/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
+def prediction_price_dump_data_next_page(emiten_name: str, current_page: int):
+    current_page = current_page + 1
+    return RedirectResponse(url=f"/api/prediction_price_dump_data/{emiten_name}/{current_page}")
+
+@exception_handler
+@app.get("/api/prediction_price_dump_data_prev/{emiten_name}/{current_page}", response_model=FastUI, response_model_exclude_none=True)
+def prediction_price_dump_data_prev_page(emiten_name: str, current_page: int) -> RedirectResponse:
+    return RedirectResponse(url=f"/api/prediction_price_dump_data/{emiten_name}/{max(1, current_page - 1)}")
     
 @exception_handler
 @app.get("/api/recommendation", response_model=FastUI, response_model_exclude_none=True)
