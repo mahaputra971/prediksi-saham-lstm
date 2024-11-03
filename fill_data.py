@@ -54,7 +54,8 @@ print(f"panjang kode : {len(data_kode)}, panjang Nama: {len(data_nama)}")
 def fetch_stock_data(stock_list, start, end):
     data = {}
     for stock in stock_list:
-        stock_data = yf.download(stock, start, end)
+        # stock_data = yf.download(stock, start, end)
+        stock_data = yf.download(stock, start=datetime.now() - relativedelta(years=1), end=datetime.now())
         if stock_data.empty:
             print(f"Error: No data found for stock {stock}. Skipping...")
             continue
@@ -317,7 +318,8 @@ def engine_main(stock, stock_name):
     
     # Fetch stock data
     try:
-        data = yf.download(stock)
+        data = yf.download(stock, start=datetime.now() - relativedelta(years=1), end=datetime.now())
+        # data = yf.download(stock)
         
         # Check if the data is empty
         if data.empty:
