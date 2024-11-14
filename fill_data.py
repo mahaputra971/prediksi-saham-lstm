@@ -1,4 +1,4 @@
-from app.sql import get_issuer 
+from app.sql import get_issuer, get_issuer2
 import pandas as pd
 import numpy as np
 
@@ -43,13 +43,12 @@ Session = sessionmaker(bind=engine)
 session = Session()
 today = datetime.now().strftime("%Y-%m-%d")
 
-data_kode, data_nama = get_issuer()
+# data_kode, data_nama = get_issuer()
 
+# for i in range(len(data_kode)):
+#     print(f"Kode: {data_kode[i]}, Nama: {data_nama[i]}")
 
-for i in range(len(data_kode)):
-    print(f"Kode: {data_kode[i]}, Nama: {data_nama[i]}")
-
-print(f"panjang kode : {len(data_kode)}, panjang Nama: {len(data_nama)}")
+# print(f"panjang kode : {len(data_kode)}, panjang Nama: {len(data_nama)}")
 
 def fetch_stock_data(stock_list, start, end):
     data = {}
@@ -555,7 +554,41 @@ def engine_main(stock, stock_name):
         # Handle any other errors that may occur
         print(f"An error occurred while processing stock {stock}: {str(e)}. Skipping to the next stock...")
         return None  # Skip to the next stock
+
+DEFAULT_ID_EMITEN_START = 1
+DEFAULT_ID_EMITEN_END = 9999
+
+def engine_loop(id_emiten_start, id_emiten_end):  
+    data_kode, data_nama = get_issuer2(id_emiten_start, id_emiten_end) 
+    for i in range(len(data_kode)):
+        print(f"Kode: {data_kode[i]}, Nama: {data_nama[i]}")
+    print(f"panjang kode : {len(data_kode)}, panjang Nama: {len(data_nama)}")   
+    
+    for kode, nama in zip(data_kode, data_nama):
+        engine_main(kode, nama)
+        print(f"Stock {kode} ({nama})has been processed.\n")
         
-for kode, nama in zip(data_kode, data_nama):
-    engine_main(kode, nama)
-    print(f"Stock {kode} ({nama})has been processed.\n")
+if __name__ == "__main__":
+    try:
+        # Meminta input dari pengguna
+        print("< Kosongkan input untuk menggunakan nilai default.>")
+        id_emiten_start = input("Masukkan id_emiten_start: ")
+        id_emiten_end = input("Masukkan id_emiten_end: ")
+
+        # Menggunakan nilai default jika input kosong
+        if not id_emiten_start:
+            id_emiten_start = DEFAULT_ID_EMITEN_START
+        else:
+            id_emiten_start = int(id_emiten_start)
+
+        if not id_emiten_end:
+            id_emiten_end = DEFAULT_ID_EMITEN_END
+        else:
+            id_emiten_end = int(id_emiten_end)
+
+        # Memanggil fungsi engine_loop dengan argumen dari input pengguna
+        engine_loop(id_emiten_start, id_emiten_end)
+    except ValueError as e:
+        print(f"Invalid input: {e}")
+    except Exception as e:
+        print(f"An error occurred: {e}")

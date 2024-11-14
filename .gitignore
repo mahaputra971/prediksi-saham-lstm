@@ -13,3 +13,4 @@ model
 *.env
 .env
 dbexport.sql
+update_all_data.ipynb

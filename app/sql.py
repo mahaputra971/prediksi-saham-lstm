@@ -96,6 +96,22 @@ def get_issuer():
             return data_code, data_name
     except Exception as e:
         print("failed get the data issuer, because:", str(e))
+        
+@exception_handler
+def get_issuer2 (id_emiten_start: int, id_emiten_end: int):
+    data_code = []
+    data_name = []
+    try:
+        with engine.connect() as connection:
+            query = text(f"SELECT kode_emiten, nama_emiten FROM tb_emiten WHERE status = 0 AND id_emiten BETWEEN {id_emiten_start} AND {id_emiten_end}")
+            result = connection.execute(query)
+            for row in result:
+                data_code.append(row[0])
+                data_name.append(row[1])
+            print("successfully get the data issuer!")
+            return data_code, data_name
+    except Exception as e:
+        print("failed get the data issuer, because:", str(e))
 
 @exception_handler
 def insert_data_analyst(table_name, data):
