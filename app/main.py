@@ -28,8 +28,12 @@ from datetime import datetime, timedelta
 import yfinance as yf
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-app.mount("/static2", StaticFiles(directory="picture"), name="static")
+# app.mount("/static", StaticFiles(directory="app/static"), name="static")
+# app.mount("/static2", StaticFiles(directory="picture"), name="static")
+
+# Menggunakan path absolut
+app.mount("/static", StaticFiles(directory=os.path.abspath("app/static")), name="static")
+app.mount("/static2", StaticFiles(directory=os.path.abspath("picture")), name="static")
 
 class EmitenForm(BaseModel):
     emiten_name: str = Field(title="Emiten Code")
