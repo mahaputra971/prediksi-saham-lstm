@@ -33,7 +33,7 @@ app = FastAPI()
 
 # Menggunakan path absolut
 app.mount("/static", StaticFiles(directory=os.path.abspath("app/static")), name="static")
-app.mount("/static2", StaticFiles(directory=os.path.abspath("picture")), name="static")
+app.mount("/image/picture", StaticFiles(directory=os.path.abspath("picture")), name="static")
 
 class EmitenForm(BaseModel):
     emiten_name: str = Field(title="Emiten Code")
@@ -1140,16 +1140,10 @@ def update_ichimoku_status(emiten_name: str) -> List[Any]:
 
     return RedirectResponse(url=f"/api/ichimoku_status/{emiten_name}")
     
-@app.get("/image_list/{path}")
-async def get_image_list(path: str):
-    image_list = []
-    for filename in os.listdir(path):
-        if filename.endswith((".png")):
-            file_path = os.path.join(path, filename)
-            image_url = f"https://lstm-ic.inovasi-digital.my.id/{file_path}"
-            image_list.append(image_url)
-
-    return {"image_list": path}
+@app.get("/image/picture/{path}/{emiten_name}")
+async def get_image_list(path: str, emiten_name: str, response_class: FileResponse):
+    return FileResponse(f"picture/{path}/{emiten_name}.png")
+    
 
 @app.get("/api/charts/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def charts_table(emiten_name: str) -> List[Any]:
