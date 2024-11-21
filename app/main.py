@@ -17,6 +17,7 @@ from app.engine import engine_main, train_and_evaluate_model, predict_future
 
 from fastapi import FastAPI, HTTPException, Request, Form   
 from fastapi.responses import FileResponse
+from pathlib import Path
 from fastui.events import BackEvent, PageEvent
 from fastui.forms import fastui_form
 from fastapi import Query
@@ -29,11 +30,11 @@ import yfinance as yf
 
 app = FastAPI()
 # app.mount("/static", StaticFiles(directory="app/static"), name="static")
-# app.mount("/static2", StaticFiles(directory="picture"), name="static")
+# app.mount("/image/picture", StaticFiles(directory="picture"), name="static")
 
 # Menggunakan path absolut
 app.mount("/static", StaticFiles(directory=os.path.abspath("app/static")), name="static")
-app.mount("/static2", StaticFiles(directory=os.path.abspath("picture")), name="static")
+app.mount("/api/image/picture", StaticFiles(directory=os.path.abspath("picture")), name="picture")
 
 class EmitenForm(BaseModel):
     emiten_name: str = Field(title="Emiten Code")
@@ -962,7 +963,7 @@ def update_error_metrics(emiten_name: str) -> List[Any]:
 @app.get("/api/prediction/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def prediction (emiten_name: str) -> List[Any]:
     tb_prediction_lstm = get_table_data(emiten_name, 'tb_prediction_lstm')
-    image_path_prediction = f"/static2/prediction/{emiten_name}.png"
+    image_path_prediction = f"/image/picture/prediction/{emiten_name}"
     tb_prediction_lstm = [PredictionLSTM(**{**item, 'kode_emiten': emiten_name}) for item in tb_prediction_lstm]
     for item in tb_prediction_lstm:
         if isinstance(item.date, str):
@@ -1140,27 +1141,24 @@ def update_ichimoku_status(emiten_name: str) -> List[Any]:
 
     return RedirectResponse(url=f"/api/ichimoku_status/{emiten_name}")
     
-@app.get("/image_list/")
-async def get_image_list():
-    # Get a list of image files in the attachments folder
-    image_list = []
-    for filename in os.listdir('/picture'):
-        if filename.endswith((".jpg", ".jpeg", ".png", ".gif")):
-            file_path = os.path.join('/picture', filename)
-            image_url = f"https://lstm-ic.inovasi-digital.my.id/{file_path}"
-            image_list.append(image_url)
-
-    return {"image_list": image_list}
+@app.get("/image/picture/{type_path}/{emiten_name}")
+async def get_image_list(type_path: str, emiten_name: str, response_class: FileResponse):
+    file_path = Path(f"picture/{type_path}/{emiten_name}.png")
+    print(file_path)
+    if not file_path.is_file():
+        return {"error": "Image not found on server"}
+    return FileResponse(file_path)
+    
 
 @app.get("/api/charts/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def charts_table(emiten_name: str) -> List[Any]:
     emiten_chart = get_table_data(emiten_name, 'tb_summary')
-    image_path_accuracy = f"/static2/accuracy/{emiten_name}.png"
-    image_path_adj_closing = f"/static2/adj_closing_price/{emiten_name}.png"
-    image_path_close_price = f"/static2/close_price_history/{emiten_name}.png"
-    image_path_ichimoku = f"/static2/ichimoku/{emiten_name}.png"
-    image_path_prediction = f"/static2/prediction/{emiten_name}.png"
-    image_path_sales_volume = f"/static2/sales_volume/{emiten_name}.png"
+    image_path_accuracy = f"/image/picture/accuracy/{emiten_name}"
+    image_path_adj_closing = f"/image/picture/adj_closing_price/{emiten_name}"
+    image_path_close_price = f"/image/picture/close_price_history/{emiten_name}"
+    image_path_ichimoku = f"/image/picture/ichimoku/{emiten_name}"
+    image_path_prediction = f"/image/picture/prediction/{emiten_name}"
+    image_path_sales_volume = f"/image/picture/sales_volume/{emiten_name}"
     emiten_chart = [ChartResponse(**{**item, 'kode_emiten': emiten_name}) for item in emiten_chart]
     for item in emiten_chart:
         if isinstance(item.render_date, str):
