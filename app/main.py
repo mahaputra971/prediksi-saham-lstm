@@ -1140,17 +1140,16 @@ def update_ichimoku_status(emiten_name: str) -> List[Any]:
 
     return RedirectResponse(url=f"/api/ichimoku_status/{emiten_name}")
     
-@app.get("/image_list/")
-async def get_image_list():
-    # Get a list of image files in the attachments folder
+@app.get("/image_list/{path}")
+async def get_image_list(path: str):
     image_list = []
-    for filename in os.listdir('/picture'):
-        if filename.endswith((".jpg", ".jpeg", ".png", ".gif")):
-            file_path = os.path.join('/picture', filename)
+    for filename in os.listdir(path):
+        if filename.endswith((".png")):
+            file_path = os.path.join(path, filename)
             image_url = f"https://lstm-ic.inovasi-digital.my.id/{file_path}"
             image_list.append(image_url)
 
-    return {"image_list": image_list}
+    return {"image_list": path}
 
 @app.get("/api/charts/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 def charts_table(emiten_name: str) -> List[Any]:
