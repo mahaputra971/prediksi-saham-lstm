@@ -1140,7 +1140,7 @@ def update_ichimoku_status(emiten_name: str) -> List[Any]:
 
     return RedirectResponse(url=f"/api/ichimoku_status/{emiten_name}")
     
-@app.get("/image/picture/{path}/{emiten_name}")
+@app.get("/api/image/picture/{path}/{emiten_name}", response_model=FastUI, response_model_exclude_none=True)
 async def get_image_list(path: str, emiten_name: str, response_class: FileResponse):
     return FileResponse(f"picture/{path}/{emiten_name}.png")
     
