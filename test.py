@@ -1,4 +1,8 @@
-from app.sql import emiten_recommendation_by_return_prediction
+# from app.sql import emiten_recommendation_by_return_prediction
 
-data = emiten_recommendation_by_return_prediction(10)
-print(data)
+# data = emiten_recommendation_by_return_prediction(10)
+# print(data)
+
+from app.sql import erase_spesific_issuer
+
+erase_spesific_issuer('CUAN.JK')

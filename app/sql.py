@@ -131,6 +131,7 @@ def get_spesific_issuer(emiten_code: str):
         
 @exception_handler
 def erase_spesific_issuer(emiten_code: str):
+    emiten_id = get_emiten_id(emiten_code)
     try:
         with engine.connect() as connection:
             tables = [
@@ -147,9 +148,9 @@ def erase_spesific_issuer(emiten_code: str):
             ]
             
             for table in tables:
-                query = text(f"DELETE FROM {table} WHERE kode_emiten = :emiten_code")
-                connection.execute(query, {'emiten_code': emiten_code})
-            
+                query = text(f"DELETE FROM {table} WHERE id_emiten = :emiten_id")
+                connection.execute(query, {'emiten_id': emiten_id})
+                connection.commit()
             print("Successfully erased the data for the specified issuer!")
     except Exception as e:
         print("Failed to erase the data for the specified issuer, because:", str(e))
