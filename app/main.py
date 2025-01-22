@@ -10,7 +10,7 @@ from fastui import FastUI, AnyComponent, prebuilt_html, components as c
 from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent
 from fastapi.staticfiles import StaticFiles
-from app.sql import get_table_data, get_emiten_status, get_emiten_id, insert_data_analyst, fetch_emiten_recommendation
+from app.sql import get_table_data, get_emiten_status, get_emiten_id, insert_data_analyst, fetch_emiten_recommendation, emiten_recommendation_by_return_prediction
 from app.predict import predict_with_loaded_model, forcasting_stock, forcasting_stock2, ichimoku_predict, train_and_evaluate_model2, train_and_evaluate_model3
 from app.exception import exception_handler
 from app.engine import engine_main, train_and_evaluate_model, predict_future
@@ -115,6 +115,9 @@ class LSTMForm(BaseModel):
         if 'start_date' in info.data and 'end_date' in info.data:
             cls.check_date_differences(info.data['start_date'], info.data['end_date'], v)
         return v
+
+class PercentageForm(BaseModel):
+    percentage: int
     
 class IchimokuData(BaseModel):
     kode_emiten: str
@@ -1748,69 +1751,93 @@ def emiten_recommendation():
     data_3 = list(set(data_3))
     data_4 = list(set(data_4))
 
-    if len(data_1) == 0 : 
-        data_1 = ['Kosong']
-    if len(data_2) == 0 : 
-        data_2 = ['Kosong']
-    if len(data_3) == 0 : 
-        data_3 = ['Kosong']
-    if len(data_4) == 0 : 
-        data_4 = ['Kosong']
-    elif not data_1 and not data_2 and not data_3 and not data_4 :  # Check if data list is empty
-        return [
-            c.Page(
-                components=[
-                    c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
-                    c.Heading(text='Emiten Recommendation', level=2),
-                    c.Text(text='No recommendations available.'),
-                ]
-            ),
-        ]
+    # Handle empty data lists
+    def ensure_non_empty(data):
+        return data if data else ['Kosong']
+
+    data_1, data_2, data_3, data_4 = map(ensure_non_empty, [data_1, data_2, data_3, data_4])
 
     # Convert to list of dictionaries for the Table component
-    data_1 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_1]
-    data_2 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_2]
-    data_3 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_3]
-    data_4 = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_4]
+    def to_recommendations(data):
+        return [Recommendation(kode_emiten=kode, date=date.today()) for kode in data]
+
+    data_1, data_2, data_3, data_4 = map(to_recommendations, [data_1, data_2, data_3, data_4])
     
     return [
         c.Page(
             components=[
+                c.Button(text='Prediksi Keuntungan Dinamis', 
+                        on_click=GoToEvent(url='/percentage_form'), 
+                        named_style='secondary', 
+                        class_name='ms-2'),
                 c.Heading(text='Emiten Recommendation', level=2),
-                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url=f'/home')),
+                c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url='/home')),
                 c.Heading(text=f'Deskripsi : Pada page ini berisi data rekomendasi saham sesuai rekomendasi dari perhitungan prediksi LSTM dan Ichimoku Cloud\n', level=6),
                 c.Heading(text='Grade 1', level=6),
-                c.Table(
-                    data=data_1,
-                    columns=[
-                        DisplayLookup(field='kode_emiten'),
-                    ],
-                ),
+                c.Table(data=data_1, columns=[DisplayLookup(field='kode_emiten')]),
                 c.Heading(text='Recommendation LSTM', level=6),
-                c.Table(
-                    data=data_2,
-                    columns=[
-                        DisplayLookup(field='kode_emiten'),
-                    ],
-                ),
+                c.Table(data=data_2, columns=[DisplayLookup(field='kode_emiten')]),
                 c.Heading(text='Recommendation IChimoku Cloud', level=6),
-                c.Table(
-                    data=data_3,
-                    columns=[
-                        DisplayLookup(field='kode_emiten'),
-                    ],
-                ),
+                c.Table(data=data_3, columns=[DisplayLookup(field='kode_emiten')]),
                 c.Heading(text='Recommendation Return >5%', level=6),
-                c.Table(
-                    data=data_4,
-                    columns=[
-                        DisplayLookup(field='kode_emiten'),
-                    ],
+                c.Table(data=data_4, columns=[DisplayLookup(field='kode_emiten')]),
+            ]
+        ),
+    ]
+
+@exception_handler
+@app.get("/api/percentage_form", response_model=FastUI, response_model_exclude_none=True)
+async def percentage_form() -> List[AnyComponent]:
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Prediksi Keuntungan Dinamis', level=2),
+                c.ModelForm(
+                    model=PercentageForm,
+                    display_mode='page',
+                    submit_url='/api/submit_percentage_form'
                 ),
             ]
         ),
     ]
-    
+
+@exception_handler
+@app.post("/api/submit_percentage_form", response_model=FastUI, response_model_exclude_none=True)
+async def submit_percentage_form(percentage: int = Form(...)) -> FastUI:
+    # Redirect to the recommendation page with the provided percentage
+    return FastUI(
+        pages=[
+            c.Redirect(url=f'/recommendation_by_percentage/{percentage}')
+        ]
+    )
+
+@app.get("/api/recommendation_by_percentage/{percentage}", response_model=FastUI, response_model_exclude_none=True)
+def recommendation_by_percentage(percentage: int):
+    try:
+        data_rec = emiten_recommendation_by_return_prediction(percentage)
+        data_rec = list(set(data_rec))
+
+        if not data_rec:
+            data_rec = ['Kosong']
+
+        data_rec = [Recommendation(kode_emiten=kode, date=date.today()) for kode in data_rec]
+
+        return FastUI(
+            pages=[
+                c.Page(
+                    components=[
+                        c.Heading(text='Emiten Recommendation by Percentage', level=2),
+                        c.Link(components=[c.Text(text='Back')], on_click=GoToEvent(url='/home')),
+                        c.Heading(text=f'Recommendations for percentage: {percentage}%', level=6),
+                        c.Table(data=data_rec, columns=[DisplayLookup(field='kode_emiten')]),
+                    ]
+                ),
+            ]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @exception_handler
 @app.get("/api/testing/{angka}", response_model=FastUI, response_model_exclude_none=True)
 def testing(angka: int):  # Define angka as a parameter

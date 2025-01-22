@@ -98,7 +98,7 @@ def get_issuer():
         print("failed get the data issuer, because:", str(e))
         
 @exception_handler
-def get_issuer2 (id_emiten_start: int, id_emiten_end: int):
+def get_issuer2(id_emiten_start: int, id_emiten_end: int):
     data_code = []
     data_name = []
     try:
@@ -112,6 +112,67 @@ def get_issuer2 (id_emiten_start: int, id_emiten_end: int):
             return data_code, data_name
     except Exception as e:
         print("failed get the data issuer, because:", str(e))
+        
+@exception_handler
+def get_spesific_issuer(emiten_code: str):
+    data_code = []
+    data_name = []
+    try:
+        with engine.connect() as connection:
+            query = text(f"SELECT kode_emiten, nama_emiten FROM tb_emiten WHERE status = 0 AND kode_emiten = '{emiten_code}'")
+            result = connection.execute(query)
+            for row in result:
+                data_code.append(row[0])
+                data_name.append(row[1])
+            print("successfully get the data issuer!")
+            return data_code, data_name
+    except Exception as e:
+        print("failed get the data issuer, because:", str(e))
+        
+@exception_handler
+def erase_spesific_issuer(emiten_code: str):
+    try:
+        with engine.connect() as connection:
+            tables = [
+                'tb_accuracy_ichimoku_cloud',
+                'tb_accuracy_lstm',
+                'tb_data_ichimoku_cloud',
+                'tb_detail_emiten',
+                'tb_ichimoku_status',
+                'tb_lstm',
+                'tb_prediction_lstm',
+                'tb_prediction_lstm_data',
+                'tb_summary',
+                'tb_prediction_price_dump_data'
+            ]
+            
+            for table in tables:
+                query = text(f"DELETE FROM {table} WHERE kode_emiten = :emiten_code")
+                connection.execute(query, {'emiten_code': emiten_code})
+            
+            print("Successfully erased the data for the specified issuer!")
+    except Exception as e:
+        print("Failed to erase the data for the specified issuer, because:", str(e))
+
+    # Update status in tb_emiten
+    try:
+        update_query = text("UPDATE tb_emiten SET status = 0 WHERE status = 1 AND kode_emiten = :emiten_code")
+        with engine.connect() as connection:
+            connection.execute(update_query, {'emiten_code': emiten_code})
+            connection.commit()
+        print("Success erase data")
+    except Exception as e:
+        print(f"Commit ERROR: {str(e)}")
+    
+    # Set the 'start_date', 'end_date', and 'scrape_date' columns in 'tb_emiten' to NULL for the specified emiten_code
+    try:
+        update_query = text("UPDATE tb_emiten SET start_date = NULL, end_date = NULL, scrape_date = NULL WHERE kode_emiten = :emiten_code")
+        with engine.connect() as connection:
+            connection.execute(update_query, {'emiten_code': emiten_code})
+            connection.commit()
+        print("Success update data in tb_emiten for 'start_date', 'end_date', and 'scrape_date' to NULL")
+    except Exception as e:
+        print(f"Commit ERROR: {str(e)}")
 
 @exception_handler
 def insert_data_analyst(table_name, data):
@@ -396,6 +457,31 @@ def fetch_emiten_recommendation():
             print(f'The Recommendation : {data_4}')
             
             return data_1, data_2, data_3, data_4
+    except Exception as e:
+        print("An error occurred:", e)
+        return None
+    
+@exception_handler
+def emiten_recommendation_by_return_prediction(percentage):
+    try: 
+        with engine.connect() as connection:
+            query = text(f"""
+                WITH latest_price AS (
+                    SELECT close
+                    FROM tb_detail_emiten
+                    WHERE date = (SELECT MAX(date) FROM tb_detail_emiten)
+                    LIMIT 1
+                )
+                SELECT tb_emiten.kode_emiten
+                FROM tb_emiten
+                JOIN tb_prediction_price_dump_data ON tb_emiten.id_emiten = tb_prediction_price_dump_data.id_emiten
+                JOIN latest_price ON 1=1
+                WHERE (tb_prediction_price_dump_data.price - latest_price.close) / latest_price.close >= {percentage/100}
+            """)
+            result = connection.execute(query)
+            data = [row[0] for row in result]
+            print(f'The Recommendation : {data}')
+            return data
     except Exception as e:
         print("An error occurred:", e)
         return None
