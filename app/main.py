@@ -286,7 +286,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
                 ),
                 c.Page(
                     components=[
-                        c.Link(components=[c.Text(text='Moderator')], on_click=GoToEvent(url=f'/navigation_moderator/{emiten_name}')),
+                        c.Link(components=[c.Text(text='Calculate By Yourself')], on_click=GoToEvent(url=f'/navigation_moderator/{emiten_name}')),
                     ]
                 ),
                 # c.Page(
@@ -351,7 +351,7 @@ async def submit_emiten_form(emiten_name: str = Form(...)):
             ),
             c.Page(
                     components=[
-                        c.Link(components=[c.Text(text='Moderator')], on_click=GoToEvent(url=f'/navigation_moderator/{emiten_name}')),
+                        c.Link(components=[c.Text(text='Calculate By Yourself')], on_click=GoToEvent(url=f'/navigation_moderator/{emiten_name}')),
                     ]
             ),
             # c.Page(
@@ -501,7 +501,7 @@ def navigation(emiten_name: str) -> List[Any]:
         ),
         c.Page(
             components=[
-                c.Link(components=[c.Text(text='Moderator')], on_click=GoToEvent(url=f'/navigation_moderator/{emiten_name}')),
+                c.Link(components=[c.Text(text='Calculate By Yourself')], on_click=GoToEvent(url=f'/navigation_moderator/{emiten_name}')),
             ]
         ),
         # c.Page(
